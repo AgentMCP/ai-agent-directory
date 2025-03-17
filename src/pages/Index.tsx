@@ -108,7 +108,7 @@ const Index = () => {
           <DirectoryGrid initialSearchQuery={searchQuery} />
         </div>
         
-        <section id="about" className="py-16 bg-gray-50">
+        <section id="about-section" className="py-16 bg-gray-50">
           <div className="max-w-4xl mx-auto px-4 md:px-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">About Agent MCP Directory</h2>
             

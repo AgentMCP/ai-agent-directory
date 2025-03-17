@@ -13,9 +13,6 @@ const Navbar = () => {
   const location = useLocation();
   const { currentUser } = useAuth();
 
-  // Check if user is admin (has specific email)
-  const isAdmin = currentUser?.email === 'kasem@ie-14.com';
-
   // Close mobile menu when route changes
   useEffect(() => {
     setIsOpen(false);
@@ -27,6 +24,13 @@ const Navbar = () => {
       setIsOpen(false);
     }
   }, [isMobile]);
+
+  const scrollToAbout = () => {
+    const aboutSection = document.getElementById('about-section');
+    if (aboutSection) {
+      aboutSection.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   return (
     <nav className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-md border-b border-gray-100">
@@ -43,12 +47,12 @@ const Navbar = () => {
             <Link to="/" className="text-gray-800 hover:text-primary px-3 py-2 rounded-md text-sm font-medium transition-colors">
               Home
             </Link>
-            <Link to="/about" className="text-gray-800 hover:text-primary px-3 py-2 rounded-md text-sm font-medium transition-colors">
+            <button 
+              onClick={scrollToAbout} 
+              className="text-gray-800 hover:text-primary px-3 py-2 rounded-md text-sm font-medium transition-colors"
+            >
               About
-            </Link>
-            <Link to="/resources" className="text-gray-800 hover:text-primary px-3 py-2 rounded-md text-sm font-medium transition-colors">
-              Resources
-            </Link>
+            </button>
             <a 
               href="https://github.com/AgentMCP/ai-agent-directory" 
               target="_blank" 
@@ -59,9 +63,7 @@ const Navbar = () => {
               <span>GitHub</span>
             </a>
             
-            {isAdmin && currentUser && (
-              <BulkImportModal />
-            )}
+            <BulkImportModal />
             
             <LoginButton />
           </div>
@@ -91,18 +93,12 @@ const Navbar = () => {
             >
               Home
             </Link>
-            <Link
-              to="/about"
-              className="text-gray-800 hover:bg-secondary hover:text-primary block px-3 py-2 rounded-xl text-base font-medium transition-colors"
+            <button
+              onClick={scrollToAbout}
+              className="text-gray-800 hover:bg-secondary hover:text-primary block px-3 py-2 rounded-xl text-base font-medium transition-colors w-full text-left"
             >
               About
-            </Link>
-            <Link
-              to="/resources"
-              className="text-gray-800 hover:bg-secondary hover:text-primary block px-3 py-2 rounded-xl text-base font-medium transition-colors"
-            >
-              Resources
-            </Link>
+            </button>
             <a
               href="https://github.com/AgentMCP/ai-agent-directory"
               target="_blank"
@@ -113,11 +109,9 @@ const Navbar = () => {
               <span>GitHub</span>
             </a>
             
-            {isAdmin && currentUser && (
-              <div className="px-3 py-2">
-                <BulkImportModal />
-              </div>
-            )}
+            <div className="px-3 py-2">
+              <BulkImportModal />
+            </div>
             
             <div className="px-3 py-2">
               <LoginButton />

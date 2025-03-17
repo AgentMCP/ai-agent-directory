@@ -3,12 +3,11 @@ import SearchBar from './SearchBar';
 import { useInView } from '../utils/animations';
 import { GitHubService } from '../services/GitHubService';
 import { Button } from './ui/button';
-import { ArrowRight, Star } from 'lucide-react';
-import { Agent } from '@/types';
+import { ArrowRight } from 'lucide-react';
 
 interface HeroProps {
   onSearch: (query: string) => void;
-  onAddProject?: () => void; // Made optional
+  onAddProject?: () => void;
 }
 
 const Hero = ({ onSearch, onAddProject }: HeroProps) => {
@@ -16,21 +15,10 @@ const Hero = ({ onSearch, onAddProject }: HeroProps) => {
   const isInView = useInView(heroRef, '-100px');
   const [isVisible, setIsVisible] = useState(false);
   const [lastUpdated, setLastUpdated] = useState('');
-  const [featuredProject, setFeaturedProject] = useState<Agent | null>(null);
 
   useEffect(() => {
     setIsVisible(true);
     setLastUpdated(GitHubService.getLastUpdatedTimestamp());
-    
-    // Fetch a single featured project
-    const getFeaturedProject = async () => {
-      const topProjects = await GitHubService.getTopAgentMcpProjects();
-      if (topProjects.length > 0) {
-        setFeaturedProject(topProjects[0]);
-      }
-    };
-    
-    getFeaturedProject();
   }, []);
 
   const handleRefresh = async () => {
@@ -41,7 +29,7 @@ const Hero = ({ onSearch, onAddProject }: HeroProps) => {
   return (
     <div 
       ref={heroRef}
-      className="relative min-h-[50vh] flex flex-col items-center justify-center px-4 pt-12 pb-16 overflow-hidden"
+      className="relative min-h-[40vh] flex flex-col items-center justify-center px-4 pt-12 pb-16 overflow-hidden"
     >
       {/* Background elements */}
       <div className="absolute inset-0 -z-10 overflow-hidden">
@@ -114,43 +102,6 @@ const Hero = ({ onSearch, onAddProject }: HeroProps) => {
             </button>
           </div>
         </div>
-        
-        {featuredProject && (
-          <div className="mt-4 max-w-md mx-auto">
-            <div className="text-sm font-medium text-gray-500 mb-2">Featured Project</div>
-            <div className="bg-white rounded-lg shadow-md p-4 hover:shadow-lg transition-shadow">
-              <div className="flex items-start mb-2">
-                <img 
-                  src={featuredProject.avatar || "https://via.placeholder.com/40"} 
-                  alt={featuredProject.name}
-                  className="w-8 h-8 rounded-full mr-3"
-                />
-                <div className="text-left">
-                  <h3 className="font-semibold text-base">{featuredProject.name}</h3>
-                  <p className="text-xs text-gray-500">{featuredProject.owner}</p>
-                </div>
-              </div>
-              <p className="text-gray-700 text-sm mb-2 line-clamp-2 text-left">{featuredProject.description}</p>
-              <div className="flex justify-between items-center">
-                <div className="flex items-center space-x-2 text-xs">
-                  <span className="flex items-center">
-                    <Star className="w-3 h-3 mr-1 text-yellow-500" />
-                    {featuredProject.stars.toLocaleString()}
-                  </span>
-                  <span className="text-xs px-2 py-0.5 bg-gray-100 rounded-full">{featuredProject.language}</span>
-                </div>
-                <a 
-                  href={featuredProject.url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-xs font-medium text-blue-600 hover:text-blue-800"
-                >
-                  View Project →
-                </a>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
       
       <div 

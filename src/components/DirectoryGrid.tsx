@@ -10,7 +10,6 @@ import { toast } from '@/components/ui/use-toast';
 import AddProjectForm from './AddProjectForm';
 import BulkImportModal from './BulkImportModal';
 import { RefreshCw, Search, PlusCircle } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
 
 interface DirectoryGridProps {
   initialSearchQuery?: string;
@@ -28,10 +27,6 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
     searchQuery: initialSearchQuery,
   });
   const directoryRef = useRef<HTMLDivElement>(null);
-  const { currentUser } = useAuth();
-  
-  // Check if user is admin (has specific email)
-  const isAdmin = currentUser?.email === 'kasem@ie-14.com';
   
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -248,9 +243,12 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
                 {filteredAgents.length} {filteredAgents.length === 1 ? 'project' : 'projects'}
               </div>
               
-              {isAdmin && currentUser && (
-                <AddProjectForm onProjectAdded={handleProjectAdded} />
-              )}
+              <AddProjectForm onProjectAdded={handleProjectAdded} />
+              
+              <BulkImportModal 
+                onProjectsAdded={handleBulkProjectsAdded}
+                existingProjectUrls={existingProjectUrls}
+              />
               
               <Button 
                 variant="outline" 
