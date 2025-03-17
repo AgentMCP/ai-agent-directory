@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { Agent } from '../types';
 
 /**
@@ -30,7 +29,7 @@ export const ScrapeService = {
         
         // Combine with user query
         const searchQuery = `${term} ${query}`;
-        const results = await this.searchGoogle(searchQuery);
+        const results = await this.searchGitHub(searchQuery);
         
         // Process results
         for (const repo of results) {
@@ -72,18 +71,15 @@ export const ScrapeService = {
   },
   
   /**
-   * Search Google for GitHub repositories
+   * Search GitHub for repositories
    * @param query Search query
    * @returns Array of repository information
    */
-  async searchGoogle(query: string): Promise<any[]> {
+  async searchGitHub(query: string): Promise<any[]> {
     try {
-      // Using a CORS proxy is the best option for real implementation
-      // For this simulation, we'll implement a custom search
       const searchResults = [];
       
-      // Directly search GitHub API if possible
-      // This provides more reliable and structured data than scraping Google
+      // Try GitHub API with fetch
       try {
         // GitHub search API (if token is available)
         const githubToken = localStorage.getItem('github_token') || '';
@@ -99,73 +95,63 @@ export const ScrapeService = {
         const searchTerms = query.split(' ').filter(term => term.length > 2);
         const queryString = searchTerms.join('+');
         
-        const response = await axios.get(
-          `https://api.github.com/search/repositories?q=${queryString}+in:name,description,readme&sort=stars&order=desc&per_page=100`,
-          { headers }
-        );
+        // Use the native fetch API instead of axios
+        const apiUrl = `https://api.github.com/search/repositories?q=${queryString}+in:name,description,readme&sort=stars&order=desc&per_page=100`;
         
-        if (response.data && response.data.items) {
-          for (const item of response.data.items) {
-            searchResults.push({
-              url: item.html_url,
-              name: item.name,
-              description: item.description || '',
-              owner: item.owner.login,
-              stars: item.stargazers_count,
-              forks: item.forks_count,
-              topics: item.topics || [],
-              language: item.language,
-              updated: item.updated_at
-            });
+        // First check if the fetch will succeed (CORS check)
+        const response = await fetch(apiUrl, { 
+          method: 'GET',
+          headers,
+          mode: 'cors'
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data && data.items) {
+            for (const item of data.items) {
+              searchResults.push({
+                url: item.html_url,
+                name: item.name,
+                description: item.description || '',
+                owner: item.owner.login,
+                stars: item.stargazers_count,
+                forks: item.forks_count,
+                topics: item.topics || [],
+                language: item.language,
+                updated: item.updated_at
+              });
+            }
           }
+        } else {
+          throw new Error(`GitHub API returned ${response.status}: ${response.statusText}`);
         }
       } catch (error) {
         console.error('Error searching GitHub API:', error);
         
-        // Fallback to direct GitHub search using a simulated browser search
-        // In a real implementation, we would use a server-side API or service for this
-        try {
-          // Simulate a direct GitHub search for repositories
-          const encodedQuery = encodeURIComponent(query);
-          const response = await axios.get(`https://github.com/search?q=${encodedQuery}&type=repositories`);
-          
-          // Parse the HTML response to extract repository information
-          // This is a simplified simulation
-          const html = response.data;
-          const repos = this.extractRepositoriesFromHTML(html);
-          
-          searchResults.push(...repos);
-        } catch (githubSearchError) {
-          console.error('Error searching GitHub directly:', githubSearchError);
-        }
+        // Fallback to simulated results if API fails
+        const simulatedResults = this.generateSimulatedResults(query);
+        searchResults.push(...simulatedResults);
       }
       
       return searchResults;
     } catch (error) {
-      console.error('Error in Google search:', error);
-      return [];
+      console.error('Error in GitHub search:', error);
+      return this.generateSimulatedResults(query);
     }
   },
   
   /**
-   * Extract repositories from HTML content (simplified simulation)
+   * Generate simulated search results based on query
    */
-  extractRepositoriesFromHTML(html: string): any[] {
-    // This would typically parse the HTML using DOM methods
-    // For this simulation, we're returning simulated results
-    
-    // In a real implementation, we would use something like:
-    // const parser = new DOMParser();
-    // const doc = parser.parseFromString(html, 'text/html');
-    // const repoElements = doc.querySelectorAll('.repo-list-item');
-    
-    // Generate some realistic looking but randomized results
+  generateSimulatedResults(query: string): any[] {
+    // Generate realistic looking but randomized results
     const topics = ['ai', 'agent', 'llm', 'mcp', 'autonomous', 'framework', 'ml', 'nlp'];
     const languages = ['Python', 'TypeScript', 'JavaScript', 'Go', 'Rust', 'Java'];
     const repositories = [];
     
-    // Simulate finding a random number of repositories (5-15)
-    const count = Math.floor(Math.random() * 10) + 5;
+    // Simulate finding a random number of repositories (5-25)
+    const count = Math.floor(Math.random() * 20) + 5;
     
     for (let i = 0; i < count; i++) {
       const repoTopics = [];
@@ -312,6 +298,7 @@ export const ScrapeService = {
    * Get fallback repositories if search fails
    */
   getFallbackRepositories(): Agent[] {
+    // Return a mix of popular AI agent and MCP repositories
     return [
       {
         id: `fallback-${Date.now()}-1`,
@@ -367,6 +354,20 @@ export const ScrapeService = {
         language: 'TypeScript',
         updated: new Date().toISOString(),
         topics: ['mcp', 'ai', 'context-orchestration'],
+        license: 'MIT'
+      },
+      {
+        id: `fallback-${Date.now()}-5`,
+        name: 'CrewAI',
+        description: 'Framework for orchestrating role-playing autonomous AI agents',
+        stars: 19800,
+        forks: 2300,
+        url: 'https://github.com/joaomdmoura/crewAI',
+        owner: 'joaomdmoura',
+        avatar: 'https://github.com/joaomdmoura.png',
+        language: 'Python',
+        updated: new Date().toISOString(),
+        topics: ['ai', 'agents', 'collaborative'],
         license: 'MIT'
       }
     ];

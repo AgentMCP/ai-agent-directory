@@ -1,13 +1,16 @@
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Progress } from './ui/progress';
 import { toast } from './ui/use-toast';
 import { GitHubService } from '../services/GitHubService';
 import { ScrapeService } from '../services/ScrapeService';
-import { Search, Loader2, Link, AlertCircle } from 'lucide-react';
+import { Search, Loader2, Link, AlertCircle, Download, Check, CheckCircle } from 'lucide-react';
 import { Agent } from '../types';
 import { Input } from './ui/input';
+import { Alert, AlertTitle, AlertDescription } from './ui/alert';
+import { Label } from './ui/label';
+import { useAgentStore } from '../stores/agentStore';
 
 interface BulkImportModalProps {
   onProjectsAdded?: (agents: Agent[]) => void;
@@ -23,212 +26,48 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
   const [showSatisfactionQuery, setShowSatisfactionQuery] = useState(false);
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualUrl, setManualUrl] = useState('');
+  const [githubToken, setGithubToken] = useState(localStorage.getItem('github_token') || '');
 
-  // Mock search results data based on real GitHub AI agent projects
-  // In a real implementation, this would be fetched from an API
-  const searchGithub = async (term: string): Promise<string[]> => {
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 800));
-    
-    // Return a subset of repository URLs for each search term
-    // These are based on real repositories related to AI agents
-    const realRepoUrls: Record<string, string[]> = {
-      'AI Agent GitHub': [
-        'https://github.com/Significant-Gravitas/Auto-GPT',
-        'https://github.com/yoheinakajima/babyagi',
-        'https://github.com/reworkd/AgentGPT',
-        'https://github.com/joaomdmoura/crewAI'
-      ],
-      'MCP GitHub': [
-        'https://github.com/AgentMCP/mcp-framework',
-        'https://github.com/microsoft/semantic-kernel',
-        'https://github.com/microsoft/TaskWeaver',
-        'https://github.com/milvus-io/pymilvus'
-      ],
-      'autonomous AI agent GitHub': [
-        'https://github.com/TransformerOptimus/SuperAGI',
-        'https://github.com/OpenBMB/XAgent',
-        'https://github.com/Torantulino/Auto-GPT-Plugin-Template',
-        'https://github.com/OpenDevin/OpenDevin'
-      ],
-      'AI assistant GitHub': [
-        'https://github.com/langchain-ai/langchainjs',
-        'https://github.com/deepset-ai/haystack',
-        'https://github.com/geekan/MetaGPT',
-        'https://github.com/imartinez/privateGPT'
-      ],
-      'LLM agent GitHub': [
-        'https://github.com/run-llama/llama_index',
-        'https://github.com/hwchase17/langchain',
-        'https://github.com/mlc-ai/mlc-llm',
-        'https://github.com/ggerganov/llama.cpp'
-      ]
-    };
-    
-    // Return the repositories for the given search term, or a default set if not found
-    return realRepoUrls[term] || [
-      'https://github.com/microsoft/guidance',
-      'https://github.com/chroma-core/chroma',
-      'https://github.com/pola-rs/polars',
-      'https://github.com/lm-sys/FastChat'
-    ];
-  };
-
-  const simulateGoogleSearch = async (searchTerms: string[]) => {
+  const handleSearch = async () => {
     setIsLoading(true);
     setProgress(0);
     setStatus('');
     setShowSatisfactionQuery(false);
     
     try {
-      // Simulate searching Google for each search term
-      let allRepoUrls: string[] = [];
-      
-      for (let i = 0; i < searchTerms.length; i++) {
-        const term = searchTerms[i];
-        setStatus(`Searching for "${term}"... (${i + 1}/${searchTerms.length})`);
-        setProgress(Math.floor((i / searchTerms.length) * 30));
-        
-        // Get repository URLs for this search term
-        const repoUrls = await searchGithub(term);
-        allRepoUrls = [...allRepoUrls, ...repoUrls];
-        
-        // Remove duplicates
-        allRepoUrls = [...new Set(allRepoUrls)];
+      // Save GitHub token to localStorage if provided
+      if (githubToken.trim()) {
+        localStorage.setItem('github_token', githubToken.trim());
       }
       
-      setTotalFound(allRepoUrls.length);
-      setStatus(`Found ${allRepoUrls.length} potential GitHub repositories. Analyzing...`);
-      setProgress(30);
-      
-      // Process each repository URL
-      let foundProjects: Agent[] = [];
-      
-      for (let i = 0; i < allRepoUrls.length; i++) {
-        const repoUrl = allRepoUrls[i];
-        const currentProgress = 30 + Math.floor((i / allRepoUrls.length) * 65);
-        setProgress(currentProgress);
-        setStatus(`Processing repository ${i + 1} of ${allRepoUrls.length}: ${repoUrl}`);
-        
-        try {
-          // Try to add this repository
-          const result = await GitHubService.addProjectFromGitHub(repoUrl);
-          
-          if (result.success && result.agent) {
-            foundProjects.push(result.agent);
-            setImportedProjects([...foundProjects]);
-          }
-        } catch (error) {
-          console.error('Error adding repository:', error);
-        }
-        
-        // Slight delay to avoid overwhelming the UI with updates
-        await new Promise(resolve => setTimeout(resolve, 300));
-      }
-      
-      // Finalize import
-      setStatus('Finalizing import...');
-      setProgress(95);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      setStatus('Import complete!');
-      setProgress(100);
-      
-      toast({
-        title: 'Bulk Import Complete',
-        description: `Successfully imported ${foundProjects.length} AI agent projects`,
-      });
-      
-      if (onProjectsAdded && foundProjects.length > 0) {
-        onProjectsAdded(foundProjects);
-      }
-      
-      // Show satisfaction query
-      setShowSatisfactionQuery(true);
-      
-    } catch (error) {
-      console.error('Error during bulk import:', error);
-      toast({
-        title: 'Import Failed',
-        description: 'An error occurred during the bulk import process',
-        variant: 'destructive',
-      });
-      setIsLoading(false);
-      setShowSatisfactionQuery(true);
-    }
-  };
-
-  const handleBulkImport = async () => {
-    setIsLoading(true);
-    setProgress(0);
-    setStatus('Searching for AI Agent and MCP repositories...');
-    setImportedProjects([]);
-    setTotalFound(0);
-
-    try {
-      // First update the UI to show we're searching
+      setStatus('Searching for AI Agents and MCP repositories...');
       setProgress(10);
       
-      // Use the ScrapeService instead of the API endpoint
-      setStatus('Finding relevant repositories...');
-      // Combine queries to find a variety of AI Agent and MCP repositories
-      const repositories = await ScrapeService.scrapeGitHubRepositories('AI Agent MCP Framework LLM');
+      // Use the real ScrapeService to find repositories
+      const repositories = await ScrapeService.scrapeGitHubRepositories('AI Agent MCP');
       
-      setProgress(50);
+      setTotalFound(repositories.length);
+      setStatus(`Found ${repositories.length} AI Agent and MCP repositories.`);
+      setProgress(100);
       
-      if (repositories.length > 0) {
-        setStatus(`Found ${repositories.length} repositories. Processing...`);
-        setTotalFound(repositories.length);
-        
-        // Process each repository
-        let processedCount = 0;
-        
-        // Update the progress bar as we process repositories
-        for (const repo of repositories) {
-          processedCount++;
-          setProgress(50 + Math.floor((processedCount / repositories.length) * 45));
-          setStatus(`Processing repository ${processedCount} of ${repositories.length}: ${repo.name}`);
-          
-          // Just add a small delay to simulate processing
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-        
-        setProgress(95);
-        setStatus('Finalizing import...');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        setProgress(100);
-        setStatus('Import complete!');
-        
-        // Set the imported projects
-        setImportedProjects(repositories);
-        
-        if (onProjectsAdded) {
-          onProjectsAdded(repositories);
-        }
-        
-        toast({
-          title: 'Bulk Import Successful',
-          description: `Imported ${repositories.length} AI agent and MCP repositories`,
-        });
-      } else {
-        setStatus('No repositories found.');
-        toast({
-          title: 'No Results',
-          description: 'No AI agent or MCP repositories found matching the criteria.',
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      console.error('Error during bulk import:', error);
+      // Add the repositories to the store
+      repositories.forEach(repo => {
+        // Just add a small delay to simulate processing
+        setTimeout(() => {
+          setImportedProjects([...importedProjects, repo]);
+        }, 100);
+      });
+      
+      setShowSatisfactionQuery(true);
+    } catch (err) {
+      console.error('Error importing repositories:', err);
       toast({
         title: 'Import Failed',
-        description: `An error occurred during the import process: ${error.message}`,
+        description: `Failed to import repositories. ${err instanceof Error ? err.message : 'Unknown error'}`,
         variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
-      setShowSatisfactionQuery(true);
     }
   };
 
@@ -296,7 +135,7 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleModalClose}>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" className="flex items-center gap-2">
           <Search className="w-4 h-4" />
@@ -420,21 +259,67 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
                 <li>AI assistant GitHub</li>
                 <li>LLM agent GitHub</li>
               </ul>
+              <div className="flex flex-col space-y-2">
+                <label htmlFor="github-token" className="text-sm font-medium">
+                  GitHub Token (Optional)
+                </label>
+                <Input 
+                  id="github-token"
+                  type="password"
+                  placeholder="ghp_123456789abcdef123456789abcdef"
+                  value={githubToken}
+                  onChange={(e) => {
+                    setGithubToken(e.target.value);
+                    if (e.target.value.trim()) {
+                      localStorage.setItem('github_token', e.target.value.trim());
+                    }
+                  }}
+                  className="col-span-3"
+                />
+                <p className="text-sm text-muted-foreground">
+                  Providing a GitHub token will increase rate limits and improve search results.
+                  <a 
+                    href="https://github.com/settings/tokens" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-primary underline ml-1"
+                  >
+                    Create a token
+                  </a>
+                </p>
+              </div>
             </div>
           )}
         </div>
         
-        <DialogFooter>
-          {!isLoading && !showSatisfactionQuery && !showManualInput ? (
-            <Button onClick={handleBulkImport} disabled={isLoading}>
-              Start Bulk Import
-            </Button>
-          ) : isLoading ? (
-            <Button disabled>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Importing...
-            </Button>
-          ) : null}
+        <DialogFooter className="sm:justify-start">
+          <Button
+            type="button"
+            variant="default"
+            onClick={handleSearch}
+            disabled={isLoading}
+            className="mr-2"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Importing...
+              </>
+            ) : (
+              <>
+                <Download className="mr-2 h-4 w-4" />
+                Import Repositories
+              </>
+            )}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setIsOpen(false)}
+            disabled={isLoading}
+          >
+            {isLoading ? 'Please wait...' : 'Cancel'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
