@@ -25,14 +25,17 @@ declare module 'axios' {
   export function get<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>;
   export function post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>;
   export function put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>;
-  export function delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>;
+  // Use 'del' instead of 'delete' since delete is a reserved word
+  export function del<T = any>(url: string, config?: AxiosRequestConfig): Promise<AxiosResponse<T>>;
 
-  export default {
-    get,
-    post,
-    put,
-    delete
+  const axios: {
+    get: typeof get;
+    post: typeof post;
+    put: typeof put;
+    delete: typeof del;
   };
+  
+  export default axios;
 }
 
 declare module 'cheerio' {
@@ -50,3 +53,17 @@ declare module 'cheerio' {
 
   export function load(html: string): CheerioAPI;
 }
+
+// Add definition for localStorage if needed in browser environment
+interface Storage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+  clear(): void;
+  key(index: number): string | null;
+  readonly length: number;
+  [key: string]: any;
+}
+
+declare var localStorage: Storage;
+declare var sessionStorage: Storage;

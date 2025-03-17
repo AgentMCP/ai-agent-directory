@@ -77,8 +77,7 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
   const simulateGoogleSearch = async (searchTerms: string[]) => {
     setIsLoading(true);
     setProgress(0);
-    setImportedProjects([]);
-    setTotalFound(0);
+    setStatus('');
     setShowSatisfactionQuery(false);
     
     try {
@@ -172,26 +171,23 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
       
       // Use the ScrapeService instead of the API endpoint
       setStatus('Finding relevant repositories...');
-      const repositories = await ScrapeService.scrapeGitHubRepositories('AI Agent MCP GitHub');
-      
-      // Add some additional repositories for variety
-      const additionalRepos = ScrapeService.getAdditionalRepositories();
-      const allRepositories = [...repositories, ...additionalRepos];
+      // Combine queries to find a variety of AI Agent and MCP repositories
+      const repositories = await ScrapeService.scrapeGitHubRepositories('AI Agent MCP Framework LLM');
       
       setProgress(50);
       
-      if (allRepositories.length > 0) {
-        setStatus(`Found ${allRepositories.length} repositories. Processing...`);
-        setTotalFound(allRepositories.length);
+      if (repositories.length > 0) {
+        setStatus(`Found ${repositories.length} repositories. Processing...`);
+        setTotalFound(repositories.length);
         
         // Process each repository
         let processedCount = 0;
         
         // Update the progress bar as we process repositories
-        for (const repo of allRepositories) {
+        for (const repo of repositories) {
           processedCount++;
-          setProgress(50 + Math.floor((processedCount / allRepositories.length) * 45));
-          setStatus(`Processing repository ${processedCount} of ${allRepositories.length}: ${repo.name}`);
+          setProgress(50 + Math.floor((processedCount / repositories.length) * 45));
+          setStatus(`Processing repository ${processedCount} of ${repositories.length}: ${repo.name}`);
           
           // Just add a small delay to simulate processing
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -205,15 +201,15 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
         setStatus('Import complete!');
         
         // Set the imported projects
-        setImportedProjects(allRepositories);
+        setImportedProjects(repositories);
         
         if (onProjectsAdded) {
-          onProjectsAdded(allRepositories);
+          onProjectsAdded(repositories);
         }
         
         toast({
           title: 'Bulk Import Successful',
-          description: `Imported ${allRepositories.length} AI agent and MCP repositories`,
+          description: `Imported ${repositories.length} AI agent and MCP repositories`,
         });
       } else {
         setStatus('No repositories found.');
