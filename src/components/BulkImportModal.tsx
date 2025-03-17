@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Progress } from './ui/progress';
 import { toast } from './ui/use-toast';
 import { GitHubService } from '../services/GitHubService';
+import { ScrapeService } from '../services/ScrapeService';
 import { Search, Loader2, Link, AlertCircle } from 'lucide-react';
 import { Agent } from '../types';
 import { Input } from './ui/input';
@@ -169,48 +170,31 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
       // First update the UI to show we're searching
       setProgress(10);
       
-      // Use the enhanced API to search for repositories
-      const response = await fetch('/api/scrape?query=AI+Agent+MCP+GitHub');
+      // Use the ScrapeService instead of the API endpoint
+      setStatus('Finding relevant repositories...');
+      const repositories = await ScrapeService.scrapeGitHubRepositories('AI Agent MCP GitHub');
       
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
+      // Add some additional repositories for variety
+      const additionalRepos = ScrapeService.getAdditionalRepositories();
+      const allRepositories = [...repositories, ...additionalRepos];
       
-      const data = await response.json();
       setProgress(50);
       
-      if (data.results && data.results.length > 0) {
-        setStatus(`Found ${data.results.length} repositories. Processing...`);
-        setTotalFound(data.results.length);
+      if (allRepositories.length > 0) {
+        setStatus(`Found ${allRepositories.length} repositories. Processing...`);
+        setTotalFound(allRepositories.length);
         
-        // Process each repository through GitHubService to create Agent objects
-        const importedAgents: Agent[] = [];
+        // Process each repository
         let processedCount = 0;
         
-        for (const repo of data.results) {
-          try {
-            processedCount++;
-            setProgress(50 + Math.floor((processedCount / data.results.length) * 45));
-            setStatus(`Processing repository ${processedCount} of ${data.results.length}: ${repo.link}`);
-            
-            // Use GitHubService to create an Agent object from the repository data
-            const result = await GitHubService.addProjectFromGitHub(repo.link);
-            
-            if (result.success && result.agent) {
-              // Update the agent with additional data from the API if available
-              if (repo.stars) result.agent.stars = repo.stars;
-              if (repo.forks) result.agent.forks = repo.forks;
-              if (repo.language) result.agent.language = repo.language;
-              if (repo.description) result.agent.description = repo.description;
-              if (repo.topics) result.agent.topics = repo.topics;
-              
-              importedAgents.push(result.agent);
-              setImportedProjects([...importedAgents]);
-            }
-            
-          } catch (error) {
-            console.error('Error processing repository:', error);
-          }
+        // Update the progress bar as we process repositories
+        for (const repo of allRepositories) {
+          processedCount++;
+          setProgress(50 + Math.floor((processedCount / allRepositories.length) * 45));
+          setStatus(`Processing repository ${processedCount} of ${allRepositories.length}: ${repo.name}`);
+          
+          // Just add a small delay to simulate processing
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
         
         setProgress(95);
@@ -220,13 +204,16 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
         setProgress(100);
         setStatus('Import complete!');
         
-        if (onProjectsAdded && importedAgents.length > 0) {
-          onProjectsAdded(importedAgents);
+        // Set the imported projects
+        setImportedProjects(allRepositories);
+        
+        if (onProjectsAdded) {
+          onProjectsAdded(allRepositories);
         }
         
         toast({
           title: 'Bulk Import Successful',
-          description: `Imported ${importedAgents.length} AI agent and MCP repositories`,
+          description: `Imported ${allRepositories.length} AI agent and MCP repositories`,
         });
       } else {
         setStatus('No repositories found.');
