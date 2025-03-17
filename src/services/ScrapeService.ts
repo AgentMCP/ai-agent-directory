@@ -1,5 +1,30 @@
 import { Agent } from '../types';
 
+// Load user-submitted projects from localStorage
+const loadUserSubmittedProjects = () => {
+  try {
+    const savedProjects = localStorage.getItem('userSubmittedProjects');
+    if (savedProjects) {
+      return JSON.parse(savedProjects);
+    }
+  } catch (error) {
+    console.error('Error loading saved projects:', error);
+  }
+  return [];
+};
+
+// Save projects to localStorage
+const saveUserSubmittedProjects = (projects: Agent[]) => {
+  try {
+    localStorage.setItem('userSubmittedProjects', JSON.stringify(projects));
+  } catch (error) {
+    console.error('Error saving projects:', error);
+  }
+};
+
+// User-submitted projects storage
+let USER_SUBMITTED_PROJECTS: Agent[] = loadUserSubmittedProjects();
+
 /**
  * Service for scraping GitHub repositories for AI Agent and MCP projects
  */
@@ -89,32 +114,24 @@ const ScrapeService = {
       console.log(`Found ${allRepositories.length} repositories before validation`);
       
       // Validate repositories - only keep those matching criteria for AI Agents and MCP
-      const validatedRepositories: Agent[] = [];
+      const repositories = allRepositories.filter(repo => 
+        (this.isAIAgentRepository(repo) || this.isMCPRepository(repo)) && 
+        repo.stars >= 5 && 
+        (repo.forks >= 1 || (repo.license !== undefined && repo.license !== null))
+      );
       
-      for (const repository of allRepositories) {
-        // Check if the repository is relevant to AI agents or MCP
-        const isAgent = this.isAIAgentRepository(repository);
-        const isMCP = this.isMCPRepository(repository);
-        
-        // Validate based on stars, forks, and license
-        const hasEnoughStars = repository.stars >= 5;
-        const hasEnoughForks = repository.forks >= 1;
-        const hasLicense = repository.license !== undefined && repository.license !== null;
-        
-        if ((isAgent || isMCP) && hasEnoughStars && (hasEnoughForks || hasLicense)) {
-          const agent = this.convertToAgent(repository);
-          validatedRepositories.push(agent);
-          
-          // Limit to max results
-          if (validatedRepositories.length >= maxResults) {
-            break;
-          }
-        }
-      }
+      // Convert to Agent objects
+      const validRepositories = repositories
+        .slice(0, maxResults)
+        .map(repo => this.convertToAgent(repo));
       
-      console.log(`Validated ${validatedRepositories.length} repositories as AI Agents or MCP tools`);
+      console.log(`Validated ${validRepositories.length} repositories as AI Agents or MCP tools`);
       
-      return validatedRepositories;
+      // Save to localStorage
+      USER_SUBMITTED_PROJECTS = [...USER_SUBMITTED_PROJECTS, ...validRepositories];
+      saveUserSubmittedProjects(USER_SUBMITTED_PROJECTS);
+      
+      return validRepositories;
     } catch (error) {
       console.error('Error scraping GitHub repositories:', error);
       return this.getFallbackRepositories(isFirstImport);
@@ -695,6 +712,10 @@ const ScrapeService = {
           // Convert to Agent
           const agent = this.convertToAgent(repo);
           
+          // Add to user-submitted projects
+          USER_SUBMITTED_PROJECTS.push(agent);
+          saveUserSubmittedProjects(USER_SUBMITTED_PROJECTS);
+          
           return {
             success: true,
             agent
@@ -720,6 +741,10 @@ const ScrapeService = {
 
       // Convert to Agent
       const agent = this.convertToAgent(repo);
+
+      // Add to user-submitted projects
+      USER_SUBMITTED_PROJECTS.push(agent);
+      saveUserSubmittedProjects(USER_SUBMITTED_PROJECTS);
 
       return {
         success: true,

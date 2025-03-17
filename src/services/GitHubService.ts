@@ -1,4 +1,3 @@
-
 import { Agent } from '../types';
 
 // Real data for AI Agent projects
@@ -218,8 +217,45 @@ const REAL_PROJECTS: Agent[] = [
 // Data store for user-submitted projects
 let USER_SUBMITTED_PROJECTS: Agent[] = [];
 
+// Load saved projects from localStorage on initialization
+const loadSavedProjects = () => {
+  try {
+    const savedProjects = localStorage.getItem('userSubmittedProjects');
+    if (savedProjects) {
+      USER_SUBMITTED_PROJECTS = JSON.parse(savedProjects);
+    }
+  } catch (error) {
+    console.error('Error loading saved projects:', error);
+  }
+};
+
+// Save projects to localStorage
+const saveProjects = () => {
+  try {
+    localStorage.setItem('userSubmittedProjects', JSON.stringify(USER_SUBMITTED_PROJECTS));
+  } catch (error) {
+    console.error('Error saving projects:', error);
+  }
+};
+
+// Initialize by loading saved projects
+loadSavedProjects();
+
 // Combine all projects
-const getAllProjects = () => [...REAL_PROJECTS, ...USER_SUBMITTED_PROJECTS];
+const getAllProjects = () => {
+  // Get user-submitted projects from localStorage
+  let userProjects: Agent[] = [];
+  try {
+    const savedProjects = localStorage.getItem('userSubmittedProjects');
+    if (savedProjects) {
+      userProjects = JSON.parse(savedProjects);
+    }
+  } catch (error) {
+    console.error('Error loading saved projects:', error);
+  }
+  
+  return [...REAL_PROJECTS, ...USER_SUBMITTED_PROJECTS, ...userProjects];
+};
 
 class GitHubService {
   static fetchAgents(): Promise<Agent[]> {
@@ -369,6 +405,7 @@ class GitHubService {
           
           // Add to user submitted projects
           USER_SUBMITTED_PROJECTS.push(newAgent);
+          saveProjects();
           
           resolve({
             success: true,
