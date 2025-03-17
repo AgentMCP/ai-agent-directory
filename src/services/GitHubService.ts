@@ -258,6 +258,8 @@ const getAllProjects = () => {
 };
 
 class GitHubService {
+  static getAllProjects = getAllProjects;
+
   static fetchAgents(): Promise<Agent[]> {
     return new Promise((resolve) => {
       setTimeout(() => {

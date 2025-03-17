@@ -127,11 +127,28 @@ const ScrapeService = {
       
       console.log(`Validated ${validRepositories.length} repositories as AI Agents or MCP tools`);
       
-      // Save to localStorage
-      USER_SUBMITTED_PROJECTS = [...USER_SUBMITTED_PROJECTS, ...validRepositories];
-      saveUserSubmittedProjects(USER_SUBMITTED_PROJECTS);
+      // Get all existing projects to check for duplicates
+      const existingProjects = this.getAllExistingProjects();
       
-      return validRepositories;
+      // Filter out duplicates
+      const uniqueRepositories = validRepositories.filter(newRepo => {
+        // Check if this repository URL already exists in any project
+        return !existingProjects.some(existingRepo => 
+          existingRepo.repoUrl.toLowerCase() === newRepo.repoUrl.toLowerCase() ||
+          (existingRepo.name.toLowerCase() === newRepo.name.toLowerCase() && 
+           existingRepo.author.toLowerCase() === newRepo.author.toLowerCase())
+        );
+      });
+      
+      console.log(`Found ${uniqueRepositories.length} unique repositories after filtering duplicates`);
+      
+      // Save to localStorage
+      if (uniqueRepositories.length > 0) {
+        USER_SUBMITTED_PROJECTS = [...USER_SUBMITTED_PROJECTS, ...uniqueRepositories];
+        saveUserSubmittedProjects(USER_SUBMITTED_PROJECTS);
+      }
+      
+      return uniqueRepositories;
     } catch (error) {
       console.error('Error scraping GitHub repositories:', error);
       return this.getFallbackRepositories(isFirstImport);
@@ -648,6 +665,37 @@ const ScrapeService = {
   },
 
   /**
+   * Get all existing projects from all sources
+   */
+  getAllExistingProjects(): Agent[] {
+    // Get projects from localStorage
+    let localStorageProjects: Agent[] = [];
+    try {
+      const savedProjects = localStorage.getItem('userSubmittedProjects');
+      if (savedProjects) {
+        localStorageProjects = JSON.parse(savedProjects);
+      }
+    } catch (error) {
+      console.error('Error loading saved projects from localStorage:', error);
+    }
+    
+    // Get real projects from GitHubService
+    let realProjects: Agent[] = [];
+    try {
+      // Import from GitHubService without creating circular dependency
+      const gitHubServiceModule = require('./GitHubService');
+      if (gitHubServiceModule.GitHubService && gitHubServiceModule.GitHubService.getAllProjects) {
+        realProjects = gitHubServiceModule.GitHubService.getAllProjects();
+      }
+    } catch (error) {
+      console.error('Error loading real projects from GitHubService:', error);
+    }
+    
+    // Combine all projects
+    return [...USER_SUBMITTED_PROJECTS, ...localStorageProjects, ...realProjects];
+  },
+  
+  /**
    * Add a project from a GitHub URL
    */
   async addProjectFromGitHub(url: string) {
@@ -712,6 +760,21 @@ const ScrapeService = {
           // Convert to Agent
           const agent = this.convertToAgent(repo);
           
+          // Check for duplicates
+          const existingProjects = this.getAllExistingProjects();
+          const isDuplicate = existingProjects.some(existingRepo => 
+            existingRepo.repoUrl.toLowerCase() === agent.repoUrl.toLowerCase() ||
+            (existingRepo.name.toLowerCase() === agent.name.toLowerCase() && 
+             existingRepo.author.toLowerCase() === agent.author.toLowerCase())
+          );
+          
+          if (isDuplicate) {
+            return {
+              success: false,
+              error: 'This project already exists in the directory'
+            };
+          }
+          
           // Add to user-submitted projects
           USER_SUBMITTED_PROJECTS.push(agent);
           saveUserSubmittedProjects(USER_SUBMITTED_PROJECTS);
@@ -742,6 +805,21 @@ const ScrapeService = {
       // Convert to Agent
       const agent = this.convertToAgent(repo);
 
+      // Check for duplicates
+      const existingProjects = this.getAllExistingProjects();
+      const isDuplicate = existingProjects.some(existingRepo => 
+        existingRepo.repoUrl.toLowerCase() === agent.repoUrl.toLowerCase() ||
+        (existingRepo.name.toLowerCase() === agent.name.toLowerCase() && 
+         existingRepo.author.toLowerCase() === agent.author.toLowerCase())
+      );
+      
+      if (isDuplicate) {
+        return {
+          success: false,
+          error: 'This project already exists in the directory'
+        };
+      }
+      
       // Add to user-submitted projects
       USER_SUBMITTED_PROJECTS.push(agent);
       saveUserSubmittedProjects(USER_SUBMITTED_PROJECTS);
