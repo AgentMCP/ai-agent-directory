@@ -3,7 +3,7 @@ import SearchBar from './SearchBar';
 import { useInView } from '../utils/animations';
 import { GitHubService } from '../services/GitHubService';
 import { Button } from './ui/button';
-import { ArrowRight, Plus } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 interface HeroProps {
   onSearch: (query: string) => void;
@@ -15,8 +15,6 @@ const Hero = ({ onSearch, onAddProject }: HeroProps) => {
   const isInView = useInView(heroRef, '-100px');
   const [isVisible, setIsVisible] = useState(false);
   const [lastUpdated, setLastUpdated] = useState('');
-  const [isFramerLoading, setIsFramerLoading] = useState(false);
-  const [framerLoadingProgress, setFramerLoadingProgress] = useState(0);
 
   useEffect(() => {
     setIsVisible(true);
@@ -26,28 +24,6 @@ const Hero = ({ onSearch, onAddProject }: HeroProps) => {
   const handleRefresh = async () => {
     const result = await GitHubService.refreshAgentData();
     setLastUpdated(result.timestamp);
-  };
-
-  const handleFramerClick = () => {
-    setIsFramerLoading(true);
-    setFramerLoadingProgress(0);
-    
-    // Simulate loading progress
-    const interval = setInterval(() => {
-      setFramerLoadingProgress(prev => {
-        const newProgress = prev + Math.floor(Math.random() * 10) + 1;
-        if (newProgress >= 100) {
-          clearInterval(interval);
-          // Navigate to Framer website after loading completes
-          setTimeout(() => {
-            window.open('https://www.framer.com', '_blank');
-            setIsFramerLoading(false);
-          }, 500);
-          return 100;
-        }
-        return newProgress;
-      });
-    }, 100);
   };
 
   return (
@@ -124,26 +100,6 @@ const Hero = ({ onSearch, onAddProject }: HeroProps) => {
             >
               MCP
             </button>
-          </div>
-          
-          {/* Framer Button */}
-          <div className="mt-4 flex justify-center">
-            <Button 
-              onClick={handleFramerClick} 
-              disabled={isFramerLoading}
-              className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white"
-            >
-              <Plus className="h-4 w-4" />
-              {isFramerLoading ? 'Loading Framer...' : 'Framer'}
-              {isFramerLoading && (
-                <div className="ml-2 w-20 h-1 bg-white/30 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-white rounded-full transition-all duration-300 ease-out" 
-                    style={{ width: `${framerLoadingProgress}%` }}
-                  ></div>
-                </div>
-              )}
-            </Button>
           </div>
         </div>
       </div>

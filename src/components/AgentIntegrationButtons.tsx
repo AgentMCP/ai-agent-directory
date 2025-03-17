@@ -66,6 +66,11 @@ const AgentIntegrationButtons = ({ repoUrl, projectName }: AgentIntegrationButto
       description: `${projectName} has been successfully imported to ${platform}`,
     });
     
+    // Open Framer website if the platform is Framer
+    if (platform === 'Framer') {
+      window.open('https://www.framer.com', '_blank');
+    }
+    
     // Reset after showing completion
     setTimeout(() => {
       setIntegrationState({
@@ -124,9 +129,9 @@ const AgentIntegrationButtons = ({ repoUrl, projectName }: AgentIntegrationButto
             size="sm" 
             variant="outline" 
             className="text-xs py-1 h-8 rounded-full border-gray-200 hover:border-primary hover:text-primary transition-colors flex items-center gap-1"
-            onClick={() => handleIntegration('Trey AI')}
+            onClick={() => handleIntegration('Framer')}
           >
-            <PlusIcon className="w-3 h-3" /> Trey AI
+            <PlusIcon className="w-3 h-3" /> Framer
           </Button>
         </div>
       )}
