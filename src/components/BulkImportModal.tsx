@@ -10,7 +10,6 @@ import { Agent } from '../types';
 import { Input } from './ui/input';
 import { Alert, AlertTitle, AlertDescription } from './ui/alert';
 import { Label } from './ui/label';
-import { useAgentStore } from '../stores/agentStore';
 
 interface BulkImportModalProps {
   onProjectsAdded?: (agents: Agent[]) => void;
@@ -27,12 +26,21 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualUrl, setManualUrl] = useState('');
   const [githubToken, setGithubToken] = useState(localStorage.getItem('github_token') || '');
+  const [error, setError] = useState<string | null>(null);
+  const [showResults, setShowResults] = useState(false);
+  const [searchResults, setSearchResults] = useState<Agent[]>([]);
+  const [importedCount, setImportedCount] = useState(0);
 
   const handleSearch = async () => {
     setIsLoading(true);
     setProgress(0);
     setStatus('');
     setShowSatisfactionQuery(false);
+    setError(null);
+    setImportedProjects([]);
+    setShowResults(false);
+    setSearchResults([]);
+    setImportedCount(0);
     
     try {
       // Save GitHub token to localStorage if provided
@@ -43,31 +51,98 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
       setStatus('Searching for AI Agents and MCP repositories...');
       setProgress(10);
       
-      // Use the real ScrapeService to find repositories
-      const repositories = await ScrapeService.scrapeGitHubRepositories('AI Agent MCP');
-      
-      setTotalFound(repositories.length);
-      setStatus(`Found ${repositories.length} AI Agent and MCP repositories.`);
-      setProgress(100);
-      
-      // Add the repositories to the store
-      repositories.forEach(repo => {
-        // Just add a small delay to simulate processing
-        setTimeout(() => {
-          setImportedProjects([...importedProjects, repo]);
-        }, 100);
+      // Add a timeout to prevent the function from hanging indefinitely
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Search timed out after 30 seconds')), 30000);
       });
       
+      // Use the real ScrapeService to find repositories with a timeout
+      const repositories = await Promise.race([
+        ScrapeService.scrapeGitHubRepositories('AI Agent MCP'),
+        timeoutPromise
+      ]) as Agent[];
+      
+      // Update progress
+      setProgress(50);
+      setStatus(`Found ${repositories.length} AI Agent and MCP repositories. Processing...`);
+      
+      // Add small delays between processing each repository to show progress
+      const processedRepos: Agent[] = [];
+      for (let i = 0; i < repositories.length; i++) {
+        const repo = repositories[i];
+        processedRepos.push(repo);
+        
+        // Update progress
+        const currentProgress = 50 + Math.floor((i / repositories.length) * 50);
+        setProgress(currentProgress);
+        setStatus(`Processing repository ${i + 1} of ${repositories.length}: ${repo.name}`);
+        
+        // Update displayed repositories immediately without setTimeout
+        setImportedProjects([...processedRepos]);
+        
+        // Add a small delay to show progress
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      
+      setTotalFound(repositories.length);
+      setStatus(`Imported ${repositories.length} AI Agent and MCP repositories.`);
+      setProgress(100);
+      
+      // Add the repositories to the results
+      setShowResults(true);
+      setSearchResults(repositories);
+      setImportedCount(repositories.length);
+      
+      // If onProjectsAdded callback is provided, call it
+      if (onProjectsAdded) {
+        onProjectsAdded(repositories);
+      }
+      
       setShowSatisfactionQuery(true);
+      
+      // Show success message
+      toast({
+        title: 'Import Complete',
+        description: `Successfully imported ${repositories.length} AI Agent and MCP repositories.`,
+      });
     } catch (err) {
       console.error('Error importing repositories:', err);
+      setError(`Failed to import repositories. ${err instanceof Error ? err.message : 'Unknown error'}`);
+      
+      // Show error toast
       toast({
         title: 'Import Failed',
         description: `Failed to import repositories. ${err instanceof Error ? err.message : 'Unknown error'}`,
         variant: 'destructive',
       });
+      
+      // Try to load fallback repositories
+      try {
+        const fallbackRepos = ScrapeService.getFallbackRepositories();
+        if (fallbackRepos.length > 0) {
+          setImportedProjects(fallbackRepos);
+          setSearchResults(fallbackRepos);
+          setImportedCount(fallbackRepos.length);
+          setTotalFound(fallbackRepos.length);
+          setStatus(`Loaded ${fallbackRepos.length} fallback repositories.`);
+          setShowResults(true);
+          
+          // If onProjectsAdded callback is provided, call it with fallback repos
+          if (onProjectsAdded) {
+            onProjectsAdded(fallbackRepos);
+          }
+          
+          toast({
+            title: 'Using Fallback Data',
+            description: `Loaded ${fallbackRepos.length} sample AI Agent and MCP repositories as a fallback.`,
+          });
+        }
+      } catch (fallbackErr) {
+        console.error('Error loading fallback repositories:', fallbackErr);
+      }
     } finally {
       setIsLoading(false);
+      setProgress(100);
     }
   };
 
@@ -244,25 +319,9 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
               </Button>
             </div>
           ) : (
-            <div className="space-y-4">
-              <p className="text-sm">
-                This will search for AI agent and MCP projects up to the 25th page
-                of search results, looking for repositories that match our criteria.
-              </p>
-              <p className="text-sm font-medium">
-                Search will include terms:
-              </p>
-              <ul className="list-disc list-inside text-sm space-y-1 text-gray-600">
-                <li>AI Agent GitHub</li>
-                <li>MCP GitHub</li>
-                <li>Autonomous AI agent GitHub</li>
-                <li>AI assistant GitHub</li>
-                <li>LLM agent GitHub</li>
-              </ul>
+            <div className="flex flex-col gap-4 py-4">
               <div className="flex flex-col space-y-2">
-                <label htmlFor="github-token" className="text-sm font-medium">
-                  GitHub Token (Optional)
-                </label>
+                <Label htmlFor="github-token">GitHub Token (Optional)</Label>
                 <Input 
                   id="github-token"
                   type="password"
@@ -288,6 +347,49 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
                   </a>
                 </p>
               </div>
+              
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Error</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              
+              {isLoading && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>{status}</span>
+                    <span>{progress}%</span>
+                  </div>
+                  <Progress value={progress} className="h-2" />
+                </div>
+              )}
+              
+              {importedProjects.length > 0 && (
+                <div className="mt-4">
+                  <h3 className="text-lg font-medium mb-2">Imported Repositories ({importedProjects.length})</h3>
+                  <div className="max-h-60 overflow-y-auto border rounded-md">
+                    <ul className="divide-y">
+                      {importedProjects.map((project, index) => (
+                        <li key={`${project.id || index}`} className="p-2 hover:bg-gray-50 flex items-center space-x-2">
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                          <span className="font-medium">{project.name}</span>
+                          <span className="text-sm text-gray-500">({project.owner})</span>
+                          <a 
+                            href={project.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-blue-500 hover:underline ml-auto text-sm flex items-center"
+                          >
+                            <Link className="h-3 w-3 mr-1" /> View
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

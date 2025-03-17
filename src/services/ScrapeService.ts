@@ -99,37 +99,81 @@ export const ScrapeService = {
         const apiUrl = `https://api.github.com/search/repositories?q=${queryString}+in:name,description,readme&sort=stars&order=desc&per_page=100`;
         
         // First check if the fetch will succeed (CORS check)
-        const response = await fetch(apiUrl, { 
-          method: 'GET',
-          headers,
-          mode: 'cors'
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
+        try {
+          const response = await fetch(apiUrl, { 
+            method: 'GET',
+            headers,
+            mode: 'cors'
+          });
           
-          if (data && data.items) {
-            for (const item of data.items) {
-              searchResults.push({
-                url: item.html_url,
-                name: item.name,
-                description: item.description || '',
-                owner: item.owner.login,
-                stars: item.stargazers_count,
-                forks: item.forks_count,
-                topics: item.topics || [],
-                language: item.language,
-                updated: item.updated_at
-              });
+          if (response.ok) {
+            const data = await response.json();
+            
+            if (data && data.items) {
+              for (const item of data.items) {
+                searchResults.push({
+                  url: item.html_url,
+                  name: item.name,
+                  description: item.description || '',
+                  owner: item.owner.login,
+                  stars: item.stargazers_count,
+                  forks: item.forks_count,
+                  topics: item.topics || [],
+                  language: item.language,
+                  updated: item.updated_at
+                });
+              }
+            }
+          } else {
+            console.error(`GitHub API returned status ${response.status}`);
+            // If we get a 401 error, the token might be invalid
+            if (response.status === 401 && githubToken) {
+              console.error('GitHub token appears to be invalid');
+              // Clear the invalid token
+              localStorage.removeItem('github_token');
+            }
+            throw new Error(`GitHub API returned ${response.status}: ${response.statusText}`);
+          }
+        } catch (fetchError) {
+          console.error('CORS or fetch error:', fetchError);
+          
+          // Try a simpler fetch without the Authorization header if there was a CORS issue
+          if (githubToken && fetchError.toString().includes('CORS')) {
+            console.log('Trying without authorization header due to CORS issues');
+            const simpleResponse = await fetch(apiUrl, { 
+              method: 'GET',
+              headers: { 'Accept': 'application/vnd.github.v3+json' }
+            });
+            
+            if (simpleResponse.ok) {
+              const data = await simpleResponse.json();
+              
+              if (data && data.items) {
+                for (const item of data.items) {
+                  searchResults.push({
+                    url: item.html_url,
+                    name: item.name,
+                    description: item.description || '',
+                    owner: item.owner.login,
+                    stars: item.stargazers_count,
+                    forks: item.forks_count,
+                    topics: item.topics || [],
+                    language: item.language,
+                    updated: item.updated_at
+                  });
+                }
+                return searchResults;
+              }
             }
           }
-        } else {
-          throw new Error(`GitHub API returned ${response.status}: ${response.statusText}`);
+          
+          throw fetchError;
         }
       } catch (error) {
         console.error('Error searching GitHub API:', error);
         
         // Fallback to simulated results if API fails
+        console.log('Falling back to simulated results');
         const simulatedResults = this.generateSimulatedResults(query);
         searchResults.push(...simulatedResults);
       }
@@ -299,7 +343,7 @@ export const ScrapeService = {
    */
   getFallbackRepositories(): Agent[] {
     // Return a mix of popular AI agent and MCP repositories
-    return [
+    const fallbackRepos = [
       {
         id: `fallback-${Date.now()}-1`,
         name: 'Auto-GPT',
@@ -369,7 +413,46 @@ export const ScrapeService = {
         updated: new Date().toISOString(),
         topics: ['ai', 'agents', 'collaborative'],
         license: 'MIT'
+      },
+      {
+        id: `fallback-${Date.now()}-6`,
+        name: 'LangChain',
+        description: 'Building applications with LLMs through composability',
+        stars: 72000,
+        forks: 12000,
+        url: 'https://github.com/langchain-ai/langchain',
+        owner: 'langchain-ai',
+        avatar: 'https://github.com/langchain-ai.png',
+        language: 'Python',
+        updated: new Date().toISOString(),
+        topics: ['ai', 'llm', 'nlp', 'language-model'],
+        license: 'MIT'
+      },
+      {
+        id: `fallback-${Date.now()}-7`,
+        name: 'SuperAGI',
+        description: 'A dev-first open source autonomous AI agent framework',
+        stars: 13000,
+        forks: 1900,
+        url: 'https://github.com/TransformerOptimus/SuperAGI',
+        owner: 'TransformerOptimus',
+        avatar: 'https://github.com/TransformerOptimus.png',
+        language: 'Python',
+        updated: new Date().toISOString(),
+        topics: ['ai', 'agi', 'autonomous', 'framework'],
+        license: 'MIT'
       }
     ];
+    
+    // Generate some additional simulated repositories to reach at least 10
+    const simulatedRepos = this.generateSimulatedResults('AI Agent MCP');
+    const combinedRepos = [...fallbackRepos];
+    
+    // Add simulated repos until we have at least 10 total
+    for (let i = 0; i < simulatedRepos.length && combinedRepos.length < 15; i++) {
+      combinedRepos.push(this.convertToAgent(simulatedRepos[i]));
+    }
+    
+    return combinedRepos;
   }
 };
