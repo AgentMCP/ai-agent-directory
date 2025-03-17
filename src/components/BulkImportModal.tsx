@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Button } from './ui/button';
@@ -159,50 +158,144 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
     }
   };
 
-const handleBulkImport = async () => {
-  setIsLoading(true);
-  setStatus('Searching Google...');
-  
-  try {
-    const response = await fetch(`/api/scrape?query=AI+Agent+GitHub+MCP+autonomous+AI+assistant+LLM`);
-    const data = await response.json();
+  const handleBulkImport = async () => {
+    setIsLoading(true);
+    setProgress(0);
+    setStatus('Searching for AI Agent and MCP repositories...');
+    setImportedProjects([]);
+    setTotalFound(0);
 
-    if (data.results && data.results.length > 0) {
-      const imported = data.results.map((item: any) => ({
-        name: item.title,
-        url: item.link,
-        owner: new URL(item.link).pathname.split('/')[1],
-      }));
-      setImportedProjects(imported);
-      setTotalFound(imported.length);
-      setStatus('Import completed successfully!');
-
-      if (onProjectsAdded) {
-        onProjectsAdded(imported);
+    try {
+      // First update the UI to show we're searching
+      setProgress(10);
+      
+      // Use the enhanced API to search for repositories
+      const response = await fetch('/api/scrape?query=AI+Agent+MCP+GitHub');
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
       }
-
+      
+      const data = await response.json();
+      setProgress(50);
+      
+      if (data.results && data.results.length > 0) {
+        setStatus(`Found ${data.results.length} repositories. Processing...`);
+        setTotalFound(data.results.length);
+        
+        // Process each repository through GitHubService to create Agent objects
+        const importedAgents: Agent[] = [];
+        let processedCount = 0;
+        
+        for (const repo of data.results) {
+          try {
+            processedCount++;
+            setProgress(50 + Math.floor((processedCount / data.results.length) * 45));
+            setStatus(`Processing repository ${processedCount} of ${data.results.length}: ${repo.link}`);
+            
+            // Use GitHubService to create an Agent object from the repository data
+            const result = await GitHubService.addProjectFromGitHub(repo.link);
+            
+            if (result.success && result.agent) {
+              // Update the agent with additional data from the API if available
+              if (repo.stars) result.agent.stars = repo.stars;
+              if (repo.forks) result.agent.forks = repo.forks;
+              if (repo.language) result.agent.language = repo.language;
+              if (repo.description) result.agent.description = repo.description;
+              if (repo.topics) result.agent.topics = repo.topics;
+              
+              importedAgents.push(result.agent);
+              setImportedProjects([...importedAgents]);
+            }
+            
+          } catch (error) {
+            console.error('Error processing repository:', error);
+          }
+        }
+        
+        setProgress(95);
+        setStatus('Finalizing import...');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        setProgress(100);
+        setStatus('Import complete!');
+        
+        if (onProjectsAdded && importedAgents.length > 0) {
+          onProjectsAdded(importedAgents);
+        }
+        
+        toast({
+          title: 'Bulk Import Successful',
+          description: `Imported ${importedAgents.length} AI agent and MCP repositories`,
+        });
+      } else {
+        setStatus('No repositories found.');
+        toast({
+          title: 'No Results',
+          description: 'No AI agent or MCP repositories found matching the criteria.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error during bulk import:', error);
       toast({
-        title: 'Import Successful',
-        description: `${imported.length} repositories imported successfully.`,
-      });
-    } else {
-      toast({
-        title: 'No results',
-        description: 'No repositories found to import.',
+        title: 'Import Failed',
+        description: `An error occurred during the import process: ${error.message}`,
         variant: 'destructive',
       });
+    } finally {
+      setIsLoading(false);
+      setShowSatisfactionQuery(true);
     }
-  } catch (error) {
-    toast({
-      title: 'Import Failed',
-      description: 'An error occurred while importing. Please retry.',
-      variant: 'destructive',
-    });
-  } finally {
-    setIsLoading(false);
-    setShowSatisfactionQuery(true);
-  }
-};
+  };
+
+  const handleManualImport = async () => {
+    if (!manualUrl.trim() || !manualUrl.includes('github.com')) {
+      toast({
+        title: 'Invalid URL',
+        description: 'Please enter a valid GitHub repository URL',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    setIsLoading(true);
+    setStatus('Adding repository...');
+    
+    try {
+      const result = await GitHubService.addProjectFromGitHub(manualUrl);
+      
+      if (result.success && result.agent) {
+        setImportedProjects([result.agent]);
+        
+        if (onProjectsAdded) {
+          onProjectsAdded([result.agent]);
+        }
+        
+        toast({
+          title: 'Repository Added',
+          description: `Successfully added ${result.agent.name}`,
+        });
+        
+        setManualUrl('');
+      } else {
+        toast({
+          title: 'Import Failed',
+          description: result.error || 'Failed to add repository',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Error adding repository:', error);
+      toast({
+        title: 'Import Failed',
+        description: 'An error occurred while adding the repository',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const resetState = () => {
     setIsLoading(false);
