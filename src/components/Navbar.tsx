@@ -62,6 +62,14 @@ const Navbar = () => {
               <span>GitHub</span>
             </a>
             
+            <Button 
+              variant="outline" 
+              onClick={scrollToAbout}
+              className="flex items-center gap-2"
+            >
+              Contribute
+            </Button>
+            
             <BulkImportModal />
           </div>
           
@@ -105,6 +113,13 @@ const Navbar = () => {
               <Github className="w-4 h-4" />
               <span>GitHub</span>
             </a>
+            
+            <button
+              onClick={scrollToAbout}
+              className="text-gray-800 hover:bg-secondary hover:text-primary block px-3 py-2 rounded-xl text-base font-medium transition-colors w-full text-left font-medium text-primary"
+            >
+              Contribute
+            </button>
             
             <div className="px-3 py-2">
               <BulkImportModal />

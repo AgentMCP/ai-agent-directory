@@ -327,20 +327,9 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button 
-          variant="outline" 
-          className="flex items-center gap-2"
-          onClick={(e) => {
-            e.preventDefault();
-            // Navigate to the About section when clicked
-            const aboutSection = document.getElementById('about-section');
-            if (aboutSection) {
-              aboutSection.scrollIntoView({ behavior: 'smooth' });
-            }
-            return false;
-          }}
-        >
-          Contribute
+        <Button variant="outline" className="flex items-center gap-2">
+          <Search className="w-4 h-4" />
+          Add in Bulk
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[600px]">
