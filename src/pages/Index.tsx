@@ -76,6 +76,32 @@ const Index = () => {
                 Reach out to us via <a href="https://github.com/AgentMCP/ai-agent-directory/issues" className="text-blue-600 hover:underline">GitHub Issues</a>.
               </p>
 
+              <h3 className="text-lg font-semibold mb-3">Support Our Work</h3>
+              <div className="mb-6">
+                <p className="text-gray-700 mb-3">
+                  If you appreciate our work and want to help keep it going, consider making a small donation. 
+                  Your support covers essential costs like server upkeep, web hosting, and more, ensuring we can continue providing value. 
+                  Every contribution, no matter the size, makes a difference—thank you!
+                </p>
+                <form action="https://www.paypal.com/donate" method="post" target="_top" className="mt-3">
+                  <input type="hidden" name="hosted_button_id" value="UX72DF8RHEZEG" />
+                  <input 
+                    type="image" 
+                    src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_SM.gif" 
+                    name="submit" 
+                    title="PayPal - The safer, easier way to pay online!" 
+                    alt="Donate with PayPal button" 
+                    style={{ border: 0 }}
+                  />
+                  <img 
+                    alt="" 
+                    src="https://www.paypal.com/en_NL/i/scr/pixel.gif" 
+                    width="1" 
+                    height="1" 
+                    style={{ border: 0 }}
+                  />
+                </form>
+              </div>
             </div>
           </div>
         </section>
