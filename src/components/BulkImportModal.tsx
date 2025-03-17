@@ -13,9 +13,10 @@ import { Label } from './ui/label';
 
 interface BulkImportModalProps {
   onProjectsAdded?: (agents: Agent[]) => void;
+  existingProjectUrls?: string[]; // List of existing project URLs to prevent duplicates
 }
 
-const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
+const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImportModalProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -31,118 +32,141 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
   const [searchResults, setSearchResults] = useState<Agent[]>([]);
   const [importedCount, setImportedCount] = useState(0);
 
+  // Track if this is the first import session
+  const [isFirstImport, setIsFirstImport] = useState(() => {
+    return localStorage.getItem('has_imported_repos') !== 'true';
+  });
+
   const handleSearch = async () => {
     setIsLoading(true);
     setProgress(0);
-    setStatus('');
     setShowSatisfactionQuery(false);
     setError(null);
     setImportedProjects([]);
     setShowResults(false);
     setSearchResults([]);
     setImportedCount(0);
-    
+
     try {
       // Save GitHub token to localStorage if provided
       if (githubToken.trim()) {
         localStorage.setItem('github_token', githubToken.trim());
       }
-      
-      setStatus('Searching for AI Agents and MCP repositories...');
-      setProgress(10);
-      
-      // Add a timeout to prevent the function from hanging indefinitely
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Search timed out after 30 seconds')), 30000);
-      });
-      
-      // Use the real ScrapeService to find repositories with a timeout
-      const repositories = await Promise.race([
-        ScrapeService.scrapeGitHubRepositories('AI Agent MCP'),
-        timeoutPromise
-      ]) as Agent[];
-      
-      // Update progress
+
+      setStatus('Searching for AI Agent and MCP repositories...');
+      setProgress(5);
+
+      // Get the maximum allowed import count based on whether this is the first import
+      const maxResults = isFirstImport ? 250 : 100;
+      setStatus(`Searching for AI Agent and MCP repositories (max ${maxResults})...`);
+
+      // Call the scrapeGitHubRepositories method to fetch repositories
+      const repositories = await ScrapeService.scrapeGitHubRepositories('AI Agent MCP', isFirstImport);
+
+      // Filter out repositories that already exist
+      const newRepositories = repositories.filter(repo => 
+        !existingProjectUrls.includes(repo.url)
+      );
+
+      setStatus(`Found ${repositories.length} repositories, ${newRepositories.length} are new.`);
       setProgress(50);
-      setStatus(`Found ${repositories.length} AI Agent and MCP repositories. Processing...`);
-      
+
+      // Mark that we've done an import
+      if (isFirstImport) {
+        localStorage.setItem('has_imported_repos', 'true');
+        setIsFirstImport(false);
+      }
+
       // Add small delays between processing each repository to show progress
       const processedRepos: Agent[] = [];
-      for (let i = 0; i < repositories.length; i++) {
-        const repo = repositories[i];
+      for (let i = 0; i < newRepositories.length; i++) {
+        const repo = newRepositories[i];
         processedRepos.push(repo);
-        
+
         // Update progress
-        const currentProgress = 50 + Math.floor((i / repositories.length) * 50);
+        const currentProgress = 50 + Math.floor((i / newRepositories.length) * 50);
         setProgress(currentProgress);
-        setStatus(`Processing repository ${i + 1} of ${repositories.length}: ${repo.name}`);
-        
+        setStatus(`Processing repository ${i + 1} of ${newRepositories.length}: ${repo.name}`);
+
         // Update displayed repositories immediately without setTimeout
         setImportedProjects([...processedRepos]);
-        
+
         // Add a small delay to show progress
         await new Promise(resolve => setTimeout(resolve, 50));
       }
-      
-      setTotalFound(repositories.length);
-      setStatus(`Imported ${repositories.length} AI Agent and MCP repositories.`);
+
+      setTotalFound(newRepositories.length);
+      setStatus(`Imported ${newRepositories.length} AI Agent and MCP repositories.`);
       setProgress(100);
-      
+
       // Add the repositories to the results
       setShowResults(true);
-      setSearchResults(repositories);
-      setImportedCount(repositories.length);
-      
+      setSearchResults(newRepositories);
+      setImportedCount(newRepositories.length);
+
       // If onProjectsAdded callback is provided, call it
-      if (onProjectsAdded) {
-        onProjectsAdded(repositories);
+      if (onProjectsAdded && newRepositories.length > 0) {
+        onProjectsAdded(newRepositories);
       }
-      
+
       setShowSatisfactionQuery(true);
-      
-      // Show success message
+
+      // Show a success toast
       toast({
         title: 'Import Complete',
-        description: `Successfully imported ${repositories.length} AI Agent and MCP repositories.`,
+        description: `Successfully imported ${newRepositories.length} AI Agent and MCP repositories.`,
       });
-    } catch (err) {
-      console.error('Error importing repositories:', err);
-      setError(`Failed to import repositories. ${err instanceof Error ? err.message : 'Unknown error'}`);
-      
-      // Show error toast
-      toast({
-        title: 'Import Failed',
-        description: `Failed to import repositories. ${err instanceof Error ? err.message : 'Unknown error'}`,
-        variant: 'destructive',
-      });
-      
+    } catch (error: any) {
+      console.error('Error during repository search:', error);
+
+      setError(`Error searching repositories: ${error.message || 'Unknown error'}`);
+      setStatus('Error searching repositories');
+      setProgress(0);
+
       // Try to load fallback repositories
       try {
-        const fallbackRepos = ScrapeService.getFallbackRepositories();
-        if (fallbackRepos.length > 0) {
-          setImportedProjects(fallbackRepos);
-          setSearchResults(fallbackRepos);
-          setImportedCount(fallbackRepos.length);
-          setTotalFound(fallbackRepos.length);
-          setStatus(`Loaded ${fallbackRepos.length} fallback repositories.`);
+        const fallbackRepos = ScrapeService.getFallbackRepositories(isFirstImport);
+
+        // Filter out repositories that already exist
+        const newFallbackRepos = fallbackRepos.filter(repo => 
+          !existingProjectUrls.includes(repo.url)
+        );
+
+        if (newFallbackRepos.length > 0) {
+          setImportedProjects(newFallbackRepos);
+          setSearchResults(newFallbackRepos);
+          setImportedCount(newFallbackRepos.length);
+          setTotalFound(newFallbackRepos.length);
+          setStatus(`Loaded ${newFallbackRepos.length} fallback repositories.`);
           setShowResults(true);
-          
+
           // If onProjectsAdded callback is provided, call it with fallback repos
           if (onProjectsAdded) {
-            onProjectsAdded(fallbackRepos);
+            onProjectsAdded(newFallbackRepos);
           }
-          
+
           toast({
             title: 'Using Fallback Data',
-            description: `Loaded ${fallbackRepos.length} sample AI Agent and MCP repositories as a fallback.`,
+            description: `Loaded ${newFallbackRepos.length} sample AI Agent and MCP repositories as a fallback.`,
+          });
+
+          // Mark that we've done an import if this is the first one
+          if (isFirstImport) {
+            localStorage.setItem('has_imported_repos', 'true');
+            setIsFirstImport(false);
+          }
+        } else {
+          toast({
+            variant: 'destructive',
+            title: 'No New Repositories',
+            description: 'No new repositories found to import.',
           });
         }
-      } catch (fallbackErr) {
-        console.error('Error loading fallback repositories:', fallbackErr);
+      } catch (fallbackError) {
+        console.error('Error loading fallback repositories:', fallbackError);
       }
     } finally {
       setIsLoading(false);
-      setProgress(100);
     }
   };
 
@@ -155,25 +179,25 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
       });
       return;
     }
-    
+
     setIsLoading(true);
     setStatus('Adding repository...');
-    
+
     try {
       const result = await GitHubService.addProjectFromGitHub(manualUrl);
-      
+
       if (result.success && result.agent) {
         setImportedProjects([result.agent]);
-        
+
         if (onProjectsAdded) {
           onProjectsAdded([result.agent]);
         }
-        
+
         toast({
           title: 'Repository Added',
           description: `Successfully added ${result.agent.name}`,
         });
-        
+
         setManualUrl('');
       } else {
         toast({
@@ -223,11 +247,11 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
           <DialogDescription>
             {!showManualInput ? 
               "Search and import AI agent and MCP projects automatically. This will search for repositories containing terms like \"AI Agent\", \"MCP\", etc." :
-              "Enter the GitHub URL of an AI agent or MCP project to add it directly."
+              "Enter the GitHub URL of an AI agent project you want to add. The repository should include terms like \"AI agent\" or \"MCP\" in its description."
             }
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="py-4">
           {isLoading ? (
             <div className="space-y-6">
@@ -238,7 +262,7 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
                 </div>
                 <Progress value={progress} className="h-2" />
               </div>
-              
+
               {importedProjects.length > 0 && (
                 <div className="mt-4">
                   <h4 className="text-sm font-medium mb-2">Imported Projects ({importedProjects.length})</h4>
@@ -299,14 +323,14 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
                   </Button>
                 </div>
               </div>
-              
+
               <div className="flex items-center gap-2 p-2 bg-blue-50 text-blue-700 rounded">
                 <AlertCircle className="h-4 w-4" />
                 <p className="text-xs">
                   Enter the GitHub URL of an AI agent project you want to add. The repository should include terms like "AI agent" or "MCP" in its description.
                 </p>
               </div>
-              
+
               <Button 
                 variant="outline" 
                 className="w-full"
@@ -347,7 +371,7 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
                   </a>
                 </p>
               </div>
-              
+
               {error && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -355,7 +379,7 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-              
+
               {isLoading && (
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
@@ -365,7 +389,7 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
                   <Progress value={progress} className="h-2" />
                 </div>
               )}
-              
+
               {importedProjects.length > 0 && (
                 <div className="mt-4">
                   <h3 className="text-lg font-medium mb-2">Imported Repositories ({importedProjects.length})</h3>
@@ -393,7 +417,7 @@ const BulkImportModal = ({ onProjectsAdded }: BulkImportModalProps) => {
             </div>
           )}
         </div>
-        
+
         <DialogFooter className="sm:justify-start">
           <Button
             type="button"

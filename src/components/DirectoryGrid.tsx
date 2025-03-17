@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useMemo } from 'react';
 import AgentCard from './AgentCard';
 import { Agent, FilterOptions, SortOption } from '../types';
@@ -215,6 +214,11 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
     }
   };
 
+  // Get list of existing project URLs to prevent duplicates
+  const existingProjectUrls = useMemo(() => {
+    return agents.map(agent => agent.url);
+  }, [agents]);
+
   return (
     <div ref={directoryRef} className="py-8 px-4 md:px-8 max-w-7xl mx-auto">
       <div className="space-y-8">
@@ -238,7 +242,10 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
                 {filteredAgents.length} {filteredAgents.length === 1 ? 'project' : 'projects'}
               </div>
               <AddProjectForm onProjectAdded={handleProjectAdded} />
-              <BulkImportModal onProjectsAdded={handleBulkProjectsAdded} />
+              <BulkImportModal 
+                onProjectsAdded={handleBulkProjectsAdded}
+                existingProjectUrls={existingProjectUrls}
+              />
               <Button 
                 variant="outline" 
                 size="sm" 
