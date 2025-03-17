@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Github, Plus } from 'lucide-react';
 import { Button } from './ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
-import LoginButton from './LoginButton';
 import { useAuth } from '../contexts/AuthContext';
 import BulkImportModal from './BulkImportModal';
 
@@ -64,8 +63,6 @@ const Navbar = () => {
             </a>
             
             <BulkImportModal />
-            
-            <LoginButton />
           </div>
           
           <div className="sm:hidden">
@@ -111,10 +108,6 @@ const Navbar = () => {
             
             <div className="px-3 py-2">
               <BulkImportModal />
-            </div>
-            
-            <div className="px-3 py-2">
-              <LoginButton />
             </div>
           </div>
         </div>
