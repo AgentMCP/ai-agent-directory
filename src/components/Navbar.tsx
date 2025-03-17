@@ -4,7 +4,6 @@ import { Menu, X, Github, Plus } from 'lucide-react';
 import { Button } from './ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuth } from '../contexts/AuthContext';
-import BulkImportModal from './BulkImportModal';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -69,8 +68,6 @@ const Navbar = () => {
             >
               Contribute
             </Button>
-            
-            <BulkImportModal />
           </div>
           
           <div className="sm:hidden">
@@ -120,10 +117,6 @@ const Navbar = () => {
             >
               Contribute
             </button>
-            
-            <div className="px-3 py-2">
-              <BulkImportModal />
-            </div>
           </div>
         </div>
       )}
