@@ -205,6 +205,7 @@ const ScrapeService = {
                   forks: item.forks_count,
                   topics: item.topics || [],
                   language: item.language,
+                  license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
                   updated: item.updated_at
                 });
               }
@@ -244,6 +245,7 @@ const ScrapeService = {
                     forks: item.forks_count,
                     topics: item.topics || [],
                     language: item.language,
+                    license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
                     updated: item.updated_at
                   });
                 }
@@ -277,6 +279,7 @@ const ScrapeService = {
     // Generate realistic looking but randomized results
     const topics = ['ai', 'agent', 'llm', 'mcp', 'autonomous', 'framework', 'ml', 'nlp'];
     const languages = ['Python', 'TypeScript', 'JavaScript', 'Go', 'Rust', 'Java'];
+    const licenses = ['MIT', 'Apache-2.0', 'GPL-3.0', 'BSD-3-Clause', 'AGPL-3.0', 'MPL-2.0'];
     const repositories = [];
     
     // Simulate finding a random number of repositories (5-25)
@@ -312,7 +315,8 @@ const ScrapeService = {
         forks: Math.floor(Math.random() * 2000),
         topics: repoTopics,
         language: languages[Math.floor(Math.random() * languages.length)],
-        updated: new Date().toISOString()
+        updated: new Date().toISOString(),
+        license: licenses[Math.floor(Math.random() * licenses.length)]
       });
     }
     
@@ -753,7 +757,7 @@ const ScrapeService = {
             forks: data.forks_count,
             language: data.language || '',
             topics: data.topics || ['ai', 'agent'],
-            license: data.license ? data.license : '',
+            license: data.license ? (data.license.spdx_id || data.license.name || 'Unknown') : 'Unknown',
             updated: data.updated_at
           };
           
@@ -798,7 +802,7 @@ const ScrapeService = {
         forks: 0,
         language: '',
         topics: ['ai', 'agent'],
-        license: '',
+        license: 'Unknown', // Fixed the license in the fallback case
         updated: new Date().toISOString()
       };
 
