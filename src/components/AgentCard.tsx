@@ -117,7 +117,7 @@ const AgentCard = ({ agent }: AgentCardProps) => {
               {formatNumber(forks)}
             </span>
           </div>
-          <span className="flex items-center gap-1 text-xs font-medium">
+          <span className="flex items-center gap-1 text-xs font-medium bg-gray-100 px-2 py-0.5 rounded-full">
             {license || "No License"}
           </span>
         </div>

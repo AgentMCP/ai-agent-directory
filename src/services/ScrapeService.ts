@@ -349,7 +349,17 @@ const ScrapeService = {
    * Check if repository is related to AI agents
    */
   isAIAgentRepository(repository: any): boolean {
-    const { name, description, topics = [] } = repository;
+    const { name, description, topics = [], language } = repository;
+    
+    // Only accept English repositories
+    if (language && language !== 'English' && language !== 'Unknown' && language !== 'JavaScript' && 
+        language !== 'TypeScript' && language !== 'Python' && language !== 'HTML' && 
+        language !== 'CSS' && language !== 'Java' && language !== 'C#' && 
+        language !== 'C++' && language !== 'C' && language !== 'Ruby' && 
+        language !== 'Go' && language !== 'PHP' && language !== 'Shell') {
+      return false;
+    }
+    
     const textToSearch = [
       name, 
       description,
@@ -375,7 +385,17 @@ const ScrapeService = {
    * Check if repository is related to MCP (Model Context Protocol)
    */
   isMCPRepository(repository: any): boolean {
-    const { name, description, topics = [] } = repository;
+    const { name, description, topics = [], language } = repository;
+    
+    // Only accept English repositories
+    if (language && language !== 'English' && language !== 'Unknown' && language !== 'JavaScript' && 
+        language !== 'TypeScript' && language !== 'Python' && language !== 'HTML' && 
+        language !== 'CSS' && language !== 'Java' && language !== 'C#' && 
+        language !== 'C++' && language !== 'C' && language !== 'Ruby' && 
+        language !== 'Go' && language !== 'PHP' && language !== 'Shell') {
+      return false;
+    }
+    
     const textToSearch = [
       name, 
       description,
@@ -623,7 +643,76 @@ const ScrapeService = {
       const owner = urlParts[urlParts.length - 2];
       const name = urlParts[urlParts.length - 1];
 
-      // Create a repository object
+      // Try to fetch repository details from GitHub API
+      try {
+        const githubToken = localStorage.getItem('github_token') || '';
+        const headers: Record<string, string> = {
+          'Accept': 'application/vnd.github.v3+json'
+        };
+        
+        if (githubToken) {
+          headers['Authorization'] = `Bearer ${githubToken}`;
+        }
+        
+        const apiUrl = `https://api.github.com/repos/${owner}/${name}`;
+        const response = await fetch(apiUrl, { 
+          method: 'GET',
+          headers
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Check if repository is in English or a common programming language
+          if (data.language && 
+              data.language !== 'English' && 
+              data.language !== 'Unknown' && 
+              data.language !== 'JavaScript' && 
+              data.language !== 'TypeScript' && 
+              data.language !== 'Python' && 
+              data.language !== 'HTML' && 
+              data.language !== 'CSS' && 
+              data.language !== 'Java' && 
+              data.language !== 'C#' && 
+              data.language !== 'C++' && 
+              data.language !== 'C' && 
+              data.language !== 'Ruby' && 
+              data.language !== 'Go' && 
+              data.language !== 'PHP' && 
+              data.language !== 'Shell') {
+            return {
+              success: false,
+              error: 'Only repositories in English or common programming languages are accepted'
+            };
+          }
+          
+          // Create a repository object with actual data
+          const repo = {
+            name: data.name,
+            owner: data.owner.login,
+            url: data.html_url,
+            description: data.description || '',
+            stars: data.stargazers_count,
+            forks: data.forks_count,
+            language: data.language || '',
+            topics: data.topics || ['ai', 'agent'],
+            license: data.license ? data.license.name : '',
+            updated: data.updated_at
+          };
+          
+          // Convert to Agent
+          const agent = this.convertToAgent(repo);
+          
+          return {
+            success: true,
+            agent
+          };
+        }
+      } catch (error) {
+        console.error('Error fetching repository details:', error);
+      }
+
+      // Fallback to basic info if API call fails
       const repo = {
         name,
         owner,

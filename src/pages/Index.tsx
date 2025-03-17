@@ -35,7 +35,7 @@ const Index = () => {
       <main>
         <Hero onSearch={handleSearch} />
         
-        <div id="directory" className="bg-white py-2 min-h-screen">
+        <div id="directory" className="bg-white py-0 min-h-screen">
           <DirectoryGrid initialSearchQuery={searchQuery} />
         </div>
         
