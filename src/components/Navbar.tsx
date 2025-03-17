@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Github } from 'lucide-react';
+import { Menu, X, Github, Plus } from 'lucide-react';
 import { Button } from './ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
 import LoginButton from './LoginButton';
+import { useAuth } from '../contexts/AuthContext';
+import BulkImportModal from './BulkImportModal';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const isMobile = useIsMobile();
   const location = useLocation();
+  const { currentUser } = useAuth();
+
+  // Check if user is admin (has specific email)
+  const isAdmin = currentUser?.email === 'kasem@ie-14.com';
 
   // Close mobile menu when route changes
   useEffect(() => {
@@ -52,6 +58,11 @@ const Navbar = () => {
               <Github className="w-4 h-4" />
               <span>GitHub</span>
             </a>
+            
+            {isAdmin && currentUser && (
+              <BulkImportModal />
+            )}
+            
             <LoginButton />
           </div>
           
@@ -101,6 +112,13 @@ const Navbar = () => {
               <Github className="w-4 h-4" />
               <span>GitHub</span>
             </a>
+            
+            {isAdmin && currentUser && (
+              <div className="px-3 py-2">
+                <BulkImportModal />
+              </div>
+            )}
+            
             <div className="px-3 py-2">
               <LoginButton />
             </div>

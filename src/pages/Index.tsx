@@ -142,7 +142,7 @@ const Index = () => {
               <h3 className="text-lg font-semibold mb-3">Contact Us</h3>
               <p className="text-gray-700">
                 Have questions or want to share information about an AI agent project? 
-                Email us at <a href="mailto:kasem@ie-14.com" className="text-blue-600 hover:underline">kasem@ie-14.com</a>.
+                Reach out to us via <a href="https://github.com/AgentMCP/ai-agent-directory/issues" className="text-blue-600 hover:underline">GitHub Issues</a>.
               </p>
             </div>
           </div>

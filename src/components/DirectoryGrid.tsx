@@ -10,6 +10,7 @@ import { toast } from '@/components/ui/use-toast';
 import AddProjectForm from './AddProjectForm';
 import BulkImportModal from './BulkImportModal';
 import { RefreshCw, Search, PlusCircle } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DirectoryGridProps {
   initialSearchQuery?: string;
@@ -27,6 +28,10 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
     searchQuery: initialSearchQuery,
   });
   const directoryRef = useRef<HTMLDivElement>(null);
+  const { currentUser } = useAuth();
+  
+  // Check if user is admin (has specific email)
+  const isAdmin = currentUser?.email === 'kasem@ie-14.com';
   
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -221,8 +226,8 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
   }, [agents]);
 
   return (
-    <div ref={directoryRef} className="py-12 px-4 md:px-8 max-w-7xl mx-auto">
-      <div className="space-y-10">
+    <div ref={directoryRef} className="py-8 px-4 md:px-8 max-w-7xl mx-auto">
+      <div className="space-y-6">
         <Filters 
           onLanguageChange={handleLanguageChange}
           onSortChange={handleSortChange}
@@ -232,21 +237,21 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
         />
         
         <div>
-          <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-            <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
+          <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-3">
+            <h2 className="text-xl md:text-2xl font-bold tracking-tight">
               {filterOptions.searchQuery 
                 ? <span>Results for <span className="gradient-text">"{filterOptions.searchQuery}"</span></span>
                 : <span>AI Agent <span className="gradient-text">Projects Directory</span></span>}
             </h2>
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
               <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
                 {filteredAgents.length} {filteredAgents.length === 1 ? 'project' : 'projects'}
               </div>
-              <AddProjectForm onProjectAdded={handleProjectAdded} />
-              <BulkImportModal 
-                onProjectsAdded={handleBulkProjectsAdded}
-                existingProjectUrls={existingProjectUrls}
-              />
+              
+              {isAdmin && currentUser && (
+                <AddProjectForm onProjectAdded={handleProjectAdded} />
+              )}
+              
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -263,25 +268,25 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
           </div>
           
           {filteredAgents.length === 0 && !isLoading ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center bg-gray-50 rounded-xl">
+            <div className="flex flex-col items-center justify-center py-16 text-center bg-gray-50 rounded-xl">
               <div className="mb-4 text-gray-400">
-                <Search className="w-16 h-16 mx-auto opacity-50" />
+                <Search className="w-12 h-12 mx-auto opacity-50" />
               </div>
-              <h3 className="text-xl font-medium text-gray-900 mb-2">No results found</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No results found</h3>
               <p className="text-gray-600 max-w-md">
                 We couldn't find any AI agent projects matching your search criteria. Try adjusting your filters or search terms.
               </p>
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {(isLoading && page === 1 ? agents : currentPageData).map((agent) => (
                   <AgentCard key={agent.id} agent={agent} />
                 ))}
               </div>
               
               {filteredAgents.length > 0 && (
-                <div className="mt-10">
+                <div className="mt-8">
                   <PaginationControl 
                     currentPage={page} 
                     totalPages={totalPages} 
