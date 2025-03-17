@@ -1,5 +1,5 @@
-
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface PaginationControlProps {
   currentPage: number;
@@ -43,58 +43,57 @@ const PaginationControl = ({ currentPage, totalPages, onPageChange }: Pagination
   };
 
   return (
-    <Pagination className="mt-8">
-      <PaginationContent>
+    <div className="flex justify-center">
+      <div className="flex items-center gap-1">
         {currentPage > 1 && (
-          <PaginationItem>
-            <PaginationPrevious 
-              href="#" 
-              onClick={(e) => {
-                e.preventDefault();
-                onPageChange(currentPage - 1);
-              }} 
-            />
-          </PaginationItem>
+          <button
+            onClick={() => onPageChange(currentPage - 1)}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 hover:border-primary hover:text-primary transition-colors"
+            aria-label="Go to previous page"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
         )}
         
         {getPageNumbers().map((page, index) => {
           if (page === 'ellipsis-start' || page === 'ellipsis-end') {
             return (
-              <PaginationItem key={`ellipsis-${index}`}>
-                <span className="flex h-9 w-9 items-center justify-center">...</span>
-              </PaginationItem>
+              <span key={`ellipsis-${index}`} className="flex h-9 w-9 items-center justify-center text-gray-500">
+                ...
+              </span>
             );
           }
           
+          const isActive = currentPage === page;
+          
           return (
-            <PaginationItem key={index}>
-              <PaginationLink
-                href="#"
-                isActive={currentPage === page}
-                onClick={(e) => {
-                  e.preventDefault();
-                  onPageChange(page as number);
-                }}
-              >
-                {page}
-              </PaginationLink>
-            </PaginationItem>
+            <button
+              key={index}
+              onClick={() => onPageChange(page as number)}
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-sm transition-colors ${
+                isActive 
+                  ? 'bg-primary text-white' 
+                  : 'hover:bg-gray-100'
+              }`}
+              aria-label={`Go to page ${page}`}
+              aria-current={isActive ? 'page' : undefined}
+            >
+              {page}
+            </button>
           );
         })}
         
         {currentPage < totalPages && (
-          <PaginationItem>
-            <PaginationNext 
-              href="#" 
-              onClick={(e) => {
-                e.preventDefault();
-                onPageChange(currentPage + 1);
-              }} 
-            />
-          </PaginationItem>
+          <button
+            onClick={() => onPageChange(currentPage + 1)}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 hover:border-primary hover:text-primary transition-colors"
+            aria-label="Go to next page"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
         )}
-      </PaginationContent>
-    </Pagination>
+      </div>
+    </div>
   );
 };
 

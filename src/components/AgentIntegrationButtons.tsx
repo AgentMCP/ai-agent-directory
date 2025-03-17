@@ -1,8 +1,8 @@
-
 import { useState } from 'react';
 import { Button } from './ui/button';
 import { toast } from './ui/use-toast';
 import { Progress } from './ui/progress';
+import { PlusIcon } from 'lucide-react';
 
 interface AgentIntegrationButtonsProps {
   repoUrl: string;
@@ -100,33 +100,33 @@ const AgentIntegrationButtons = ({ repoUrl, projectName }: AgentIntegrationButto
             <span>{integrationState.statusMessage}</span>
             <span>{integrationState.progress}%</span>
           </div>
-          <Progress value={integrationState.progress} className="h-2" />
+          <Progress value={integrationState.progress} className="h-2 bg-gray-100" indicatorClassName="bg-primary" />
         </div>
       ) : (
         <div className="flex flex-wrap gap-2">
           <Button 
             size="sm" 
             variant="outline" 
-            className="text-xs py-1 h-7"
+            className="text-xs py-1 h-8 rounded-full border-gray-200 hover:border-primary hover:text-primary transition-colors flex items-center gap-1"
             onClick={() => handleIntegration('Cursor AI')}
           >
-            + Cursor AI
+            <PlusIcon className="w-3 h-3" /> Cursor AI
           </Button>
           <Button 
             size="sm" 
             variant="outline" 
-            className="text-xs py-1 h-7"
+            className="text-xs py-1 h-8 rounded-full border-gray-200 hover:border-primary hover:text-primary transition-colors flex items-center gap-1"
             onClick={() => handleIntegration('Windsurf AI')}
           >
-            + Windsurf AI
+            <PlusIcon className="w-3 h-3" /> Windsurf AI
           </Button>
           <Button 
             size="sm" 
             variant="outline" 
-            className="text-xs py-1 h-7"
+            className="text-xs py-1 h-8 rounded-full border-gray-200 hover:border-primary hover:text-primary transition-colors flex items-center gap-1"
             onClick={() => handleIntegration('Trey AI')}
           >
-            + Trey AI
+            <PlusIcon className="w-3 h-3" /> Trey AI
           </Button>
         </div>
       )}

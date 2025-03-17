@@ -9,6 +9,7 @@ import { paginateData } from '../utils/pagination';
 import { toast } from '@/components/ui/use-toast';
 import AddProjectForm from './AddProjectForm';
 import BulkImportModal from './BulkImportModal';
+import { RefreshCw, Search, PlusCircle } from 'lucide-react';
 
 interface DirectoryGridProps {
   initialSearchQuery?: string;
@@ -220,8 +221,8 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
   }, [agents]);
 
   return (
-    <div ref={directoryRef} className="py-8 px-4 md:px-8 max-w-7xl mx-auto">
-      <div className="space-y-8">
+    <div ref={directoryRef} className="py-12 px-4 md:px-8 max-w-7xl mx-auto">
+      <div className="space-y-10">
         <Filters 
           onLanguageChange={handleLanguageChange}
           onSortChange={handleSortChange}
@@ -231,14 +232,14 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
         />
         
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-gray-900">
+          <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
               {filterOptions.searchQuery 
-                ? `Results for "${filterOptions.searchQuery}"`
-                : 'AI Agent Projects Directory'}
+                ? <span>Results for <span className="gradient-text">"{filterOptions.searchQuery}"</span></span>
+                : <span>AI Agent <span className="gradient-text">Projects Directory</span></span>}
             </h2>
-            <div className="flex items-center gap-2">
-              <div className="text-sm text-gray-500">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
                 {filteredAgents.length} {filteredAgents.length === 1 ? 'project' : 'projects'}
               </div>
               <AddProjectForm onProjectAdded={handleProjectAdded} />
@@ -251,28 +252,20 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
                 size="sm" 
                 onClick={handleRefresh}
                 disabled={isRefreshing}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 rounded-full h-9 px-4 border-gray-200 hover:border-primary hover:text-primary transition-colors"
               >
-                <svg 
+                <RefreshCw 
                   className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} 
-                  xmlns="http://www.w3.org/2000/svg" 
-                  fill="none" 
-                  viewBox="0 0 24 24" 
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
+                />
                 {isRefreshing ? 'Refreshing...' : 'Refresh'}
               </Button>
             </div>
           </div>
           
           {filteredAgents.length === 0 && !isLoading ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="flex flex-col items-center justify-center py-20 text-center bg-gray-50 rounded-xl">
               <div className="mb-4 text-gray-400">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M21 21L15.5 15.5M15.5 8.5C15.5 12.0899 12.5899 15 9 15C5.41015 15 2.5 12.0899 2.5 8.5C2.5 4.91015 5.41015 2 9 2C12.5899 2 15.5 4.91015 15.5 8.5Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                <Search className="w-16 h-16 mx-auto opacity-50" />
               </div>
               <h3 className="text-xl font-medium text-gray-900 mb-2">No results found</h3>
               <p className="text-gray-600 max-w-md">
@@ -288,11 +281,13 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
               </div>
               
               {filteredAgents.length > 0 && (
-                <PaginationControl 
-                  currentPage={page} 
-                  totalPages={totalPages} 
-                  onPageChange={handlePageChange} 
-                />
+                <div className="mt-10">
+                  <PaginationControl 
+                    currentPage={page} 
+                    totalPages={totalPages} 
+                    onPageChange={handlePageChange} 
+                  />
+                </div>
               )}
             </>
           )}
