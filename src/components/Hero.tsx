@@ -29,7 +29,7 @@ const Hero = ({ onSearch, onAddProject }: HeroProps) => {
   return (
     <div 
       ref={heroRef}
-      className="relative min-h-[20vh] flex flex-col items-center justify-center px-4 pt-6 pb-2 overflow-hidden"
+      className="relative min-h-[15vh] flex flex-col items-center justify-center px-4 pt-4 pb-1 overflow-hidden"
     >
       {/* Background elements */}
       <div className="absolute inset-0 -z-10 overflow-hidden">
@@ -43,19 +43,19 @@ const Hero = ({ onSearch, onAddProject }: HeroProps) => {
           isVisible ? 'opacity-100' : 'opacity-0'
         }`}
       >
-        <div className="inline-block mb-4 bg-secondary text-primary text-sm px-4 py-1.5 rounded-full font-medium">
+        <div className="inline-block mb-2 bg-secondary text-primary text-xs px-3 py-1 rounded-full font-medium">
           <span>250+ AI Agent & MCP Projects</span>
         </div>
         
-        <h1 className="text-3xl md:text-4xl lg:text-5xl font-display font-bold mb-4 tracking-tight leading-tight text-balance">
+        <h1 className="text-2xl md:text-3xl lg:text-4xl font-display font-bold mb-2 tracking-tight leading-tight text-balance">
           AI Agent & MCP <span className="gradient-text">Directory</span>
         </h1>
         
-        <p className="text-base md:text-lg text-gray-600 mb-6 max-w-2xl mx-auto">
+        <p className="text-sm md:text-base text-gray-600 mb-4 max-w-2xl mx-auto">
           Your go-to resource for discovering cutting-edge AI agent projects and tools for building autonomous systems.
         </p>
         
-        <div className="max-w-xl mx-auto mt-4 mb-6">
+        <div className="max-w-xl mx-auto mt-2 mb-3">
           <SearchBar 
             defaultValue="" 
             onSearch={onSearch} 
@@ -63,40 +63,40 @@ const Hero = ({ onSearch, onAddProject }: HeroProps) => {
             isCompact={true}
           />
           
-          <div className="mt-3 flex flex-wrap justify-center gap-2 text-sm text-gray-600">
+          <div className="mt-2 flex flex-wrap justify-center gap-1 text-xs text-gray-600">
             <span className="text-gray-500">Popular:</span>
             <button 
               type="button"
               onClick={() => onSearch('autonomous')}
-              className="px-3 py-1 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
+              className="px-2 py-0.5 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
             >
               Autonomous
             </button>
             <button 
               type="button"
               onClick={() => onSearch('LangChain')}
-              className="px-3 py-1 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
+              className="px-2 py-0.5 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
             >
               LangChain
             </button>
             <button 
               type="button"
               onClick={() => onSearch('GPT')}
-              className="px-3 py-1 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
+              className="px-2 py-0.5 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
             >
               GPT
             </button>
             <button 
               type="button"
               onClick={() => onSearch('Dify')}
-              className="px-3 py-1 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
+              className="px-2 py-0.5 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
             >
               Dify
             </button>
             <button 
               type="button"
               onClick={() => onSearch('MCP')}
-              className="px-3 py-1 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
+              className="px-2 py-0.5 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
             >
               MCP
             </button>

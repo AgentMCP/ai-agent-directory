@@ -21,16 +21,22 @@ const SearchBar = ({
   isCompact = false
 }: SearchBarProps) => {
   const [query, setQuery] = useState(defaultValue);
+  const [searchTerms, setSearchTerms] = useState<string[]>([]);
   const [isFocused, setIsFocused] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setQuery(defaultValue);
+    if (defaultValue) {
+      setSearchTerms(defaultValue.split(' ').filter(term => term.trim() !== ''));
+    }
   }, [defaultValue]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const terms = query.split(' ').filter(term => term.trim() !== '');
+    setSearchTerms(terms);
     onSearch(query);
     if (inputRef.current) {
       inputRef.current.blur();
@@ -39,6 +45,7 @@ const SearchBar = ({
 
   const clearSearch = () => {
     setQuery('');
+    setSearchTerms([]);
     onSearch('');
   };
   
@@ -52,6 +59,14 @@ const SearchBar = ({
         setIsRefreshing(false);
       }, 1000);
     }
+  };
+
+  const removeSearchTerm = (termToRemove: string) => {
+    const newTerms = searchTerms.filter(term => term !== termToRemove);
+    setSearchTerms(newTerms);
+    const newQuery = newTerms.join(' ');
+    setQuery(newQuery);
+    onSearch(newQuery);
   };
 
   return (
@@ -120,6 +135,27 @@ const SearchBar = ({
             Search
           </button>
         </div>
+        
+        {/* Search term bubbles */}
+        {searchTerms.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {searchTerms.map((term, index) => (
+              <div 
+                key={`${term}-${index}`} 
+                className="flex items-center bg-secondary text-primary text-xs px-2 py-0.5 rounded-full"
+              >
+                <span>{term}</span>
+                <button 
+                  type="button" 
+                  onClick={() => removeSearchTerm(term)}
+                  className="ml-1 hover:text-red-500 transition-colors"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         
         {lastUpdated && !isCompact && (
           <div className="text-xs text-gray-500 mt-1 text-right">
