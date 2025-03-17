@@ -3,7 +3,7 @@ import { Agent } from '../types';
 /**
  * Service for scraping GitHub repositories for AI Agent and MCP projects
  */
-export const ScrapeService = {
+const ScrapeService = {
   /**
    * Scrape GitHub repositories for AI Agents and MCP tools
    * @param query Search query
@@ -102,7 +102,8 @@ export const ScrapeService = {
         const hasLicense = repository.license !== undefined && repository.license !== null;
         
         if ((isAgent || isMCP) && hasEnoughStars && (hasEnoughForks || hasLicense)) {
-          validatedRepositories.push(this.convertToAgent(repository));
+          const agent = this.convertToAgent(repository);
+          validatedRepositories.push(agent);
           
           // Limit to max results
           if (validatedRepositories.length >= maxResults) {
@@ -399,20 +400,40 @@ export const ScrapeService = {
   /**
    * Convert repository information to an Agent object
    */
-  async convertToAgent(repo: any): Promise<Agent> {
+  convertToAgent(repo: any): Agent {
+    if (!repo) {
+      console.error("Attempted to convert undefined repository");
+      // Return a placeholder agent if repo is undefined
+      return {
+        id: `error-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        name: 'Unknown Repository',
+        description: 'Error loading repository data',
+        stars: 0,
+        forks: 0,
+        url: '',
+        owner: 'unknown',
+        avatar: 'https://github.com/ghost.png',
+        language: 'Unknown',
+        updated: new Date().toISOString(),
+        topics: ['error'],
+        license: 'Unknown'
+      };
+    }
+    
+    // Ensure all fields have valid values
     return {
       id: `github-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      name: repo.name,
+      name: repo.name || 'Unnamed Repository',
       description: repo.description || 'AI Agent/MCP Repository',
-      stars: repo.stars || 0,
-      forks: repo.forks || 0,
-      url: repo.url,
-      owner: repo.owner,
-      avatar: `https://github.com/${repo.owner}.png`,
+      stars: typeof repo.stars === 'number' ? repo.stars : 0,
+      forks: typeof repo.forks === 'number' ? repo.forks : 0,
+      url: repo.url || '#',
+      owner: repo.owner || 'unknown',
+      avatar: repo.owner ? `https://github.com/${repo.owner}.png` : 'https://github.com/ghost.png',
       language: repo.language || 'Unknown',
       updated: repo.updated || new Date().toISOString(),
-      topics: repo.topics || ['ai', 'agent'],
-      license: 'Unknown'
+      topics: Array.isArray(repo.topics) ? repo.topics : ['ai', 'agent'],
+      license: repo.license || 'Unknown'
     };
   },
   
@@ -581,5 +602,56 @@ export const ScrapeService = {
     }
     
     return combinedRepos.slice(0, maxResults);
+  },
+
+  /**
+   * Add a project from a GitHub URL
+   */
+  async addProjectFromGitHub(url: string) {
+    try {
+      // Normalize the GitHub URL
+      const normalizedUrl = this.normalizeGitHubUrl(url);
+      if (!normalizedUrl) {
+        return {
+          success: false,
+          error: 'Invalid GitHub URL'
+        };
+      }
+
+      // Extract owner and repo from URL
+      const urlParts = normalizedUrl.split('/');
+      const owner = urlParts[urlParts.length - 2];
+      const name = urlParts[urlParts.length - 1];
+
+      // Create a repository object
+      const repo = {
+        name,
+        owner,
+        url: normalizedUrl,
+        description: '',
+        stars: 0,
+        forks: 0,
+        language: '',
+        topics: ['ai', 'agent'],
+        license: '',
+        updated: new Date().toISOString()
+      };
+
+      // Convert to Agent
+      const agent = this.convertToAgent(repo);
+
+      return {
+        success: true,
+        agent
+      };
+    } catch (error) {
+      console.error('Error adding project from GitHub:', error);
+      return {
+        success: false,
+        error: 'Failed to add project'
+      };
+    }
   }
 };
+
+export { ScrapeService };

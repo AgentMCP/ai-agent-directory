@@ -1,41 +1,59 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { Progress } from './ui/progress';
-import { toast } from './ui/use-toast';
-import { GitHubService } from '../services/GitHubService';
-import { ScrapeService } from '../services/ScrapeService';
-import { Search, Loader2, Link, AlertCircle, Download, Check, CheckCircle } from 'lucide-react';
-import { Agent } from '../types';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from './ui/dialog';
 import { Input } from './ui/input';
-import { Alert, AlertTitle, AlertDescription } from './ui/alert';
 import { Label } from './ui/label';
+import { Progress } from './ui/progress';
+import { useToast } from './ui/use-toast';
+import { Alert, AlertDescription, AlertTitle } from './ui/alert';
+import { CheckCircle, Link, Search, Loader2, AlertCircle, Download } from 'lucide-react';
+import { Agent } from '../types';
+import { ScrapeService } from '../services/ScrapeService';
 
 interface BulkImportModalProps {
-  onProjectsAdded?: (agents: Agent[]) => void;
-  existingProjectUrls?: string[]; // List of existing project URLs to prevent duplicates
+  onProjectsAdded?: (projects: Agent[]) => void;
+  existingProjectUrls?: string[];
 }
 
 const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImportModalProps) => {
+  const { toast } = useToast();
+  
+  // State management
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [githubToken, setGithubToken] = useState('');
   const [status, setStatus] = useState('');
-  const [importedProjects, setImportedProjects] = useState<Agent[]>([]);
-  const [totalFound, setTotalFound] = useState(0);
-  const [showSatisfactionQuery, setShowSatisfactionQuery] = useState(false);
-  const [showManualInput, setShowManualInput] = useState(false);
-  const [manualUrl, setManualUrl] = useState('');
-  const [githubToken, setGithubToken] = useState(localStorage.getItem('github_token') || '');
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [importedProjects, setImportedProjects] = useState<Agent[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [searchResults, setSearchResults] = useState<Agent[]>([]);
   const [importedCount, setImportedCount] = useState(0);
+  const [totalFound, setTotalFound] = useState(0);
+  const [showSatisfactionQuery, setShowSatisfactionQuery] = useState(false);
+  const [isFirstImport, setIsFirstImport] = useState(true);
+  const [manualUrl, setManualUrl] = useState('');
+  const [showManualInput, setShowManualInput] = useState(false);
 
-  // Track if this is the first import session
-  const [isFirstImport, setIsFirstImport] = useState(() => {
-    return localStorage.getItem('has_imported_repos') !== 'true';
-  });
+  useEffect(() => {
+    // Check if we've done an import before
+    const hasImported = localStorage.getItem('has_imported_repos') === 'true';
+    setIsFirstImport(!hasImported);
+
+    // Load GitHub token from localStorage if available
+    const savedToken = localStorage.getItem('github_token');
+    if (savedToken) {
+      setGithubToken(savedToken);
+    }
+  }, []);
 
   const handleSearch = async () => {
     setIsLoading(true);
@@ -61,11 +79,24 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
       setStatus(`Searching for AI Agent and MCP repositories (max ${maxResults})...`);
 
       // Call the scrapeGitHubRepositories method to fetch repositories
-      const repositories = await ScrapeService.scrapeGitHubRepositories('AI Agent MCP', isFirstImport);
+      let repositories: Agent[] = [];
+      try {
+        repositories = await ScrapeService.scrapeGitHubRepositories('AI Agent MCP', isFirstImport);
+        
+        // Validate that we received proper data
+        if (!Array.isArray(repositories)) {
+          console.error('Repository search did not return an array:', repositories);
+          throw new Error('Invalid repository data received');
+        }
+      } catch (searchError) {
+        console.error('Error during repository search:', searchError);
+        setStatus('Error in repository search, using fallback data...');
+        repositories = ScrapeService.getFallbackRepositories(isFirstImport);
+      }
 
-      // Filter out repositories that already exist
+      // Filter out repositories that already exist and any invalid entries
       const newRepositories = repositories.filter(repo => 
-        !existingProjectUrls.includes(repo.url)
+        repo && repo.url && !existingProjectUrls?.includes(repo.url)
       );
 
       setStatus(`Found ${repositories.length} repositories, ${newRepositories.length} are new.`);
@@ -77,21 +108,28 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
         setIsFirstImport(false);
       }
 
-      // Add small delays between processing each repository to show progress
+      // Process repositories in batches to avoid UI freezing
       const processedRepos: Agent[] = [];
-      for (let i = 0; i < newRepositories.length; i++) {
-        const repo = newRepositories[i];
-        processedRepos.push(repo);
-
-        // Update progress
-        const currentProgress = 50 + Math.floor((i / newRepositories.length) * 50);
-        setProgress(currentProgress);
-        setStatus(`Processing repository ${i + 1} of ${newRepositories.length}: ${repo.name}`);
-
-        // Update displayed repositories immediately without setTimeout
-        setImportedProjects([...processedRepos]);
-
-        // Add a small delay to show progress
+      const batchSize = 10;
+      
+      for (let i = 0; i < newRepositories.length; i += batchSize) {
+        const batch = newRepositories.slice(i, i + batchSize);
+        
+        for (const repo of batch) {
+          if (repo) {
+            processedRepos.push(repo);
+            
+            // Update progress
+            const currentProgress = 50 + Math.floor((processedRepos.length / newRepositories.length) * 50);
+            setProgress(currentProgress);
+            setStatus(`Processing repository ${processedRepos.length} of ${newRepositories.length}: ${repo.name || 'Unnamed Repository'}`);
+            
+            // Update displayed repositories immediately
+            setImportedProjects([...processedRepos]);
+          }
+        }
+        
+        // Add a small delay between batches
         await new Promise(resolve => setTimeout(resolve, 50));
       }
 
@@ -118,7 +156,6 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
       });
     } catch (error: any) {
       console.error('Error during repository search:', error);
-
       setError(`Error searching repositories: ${error.message || 'Unknown error'}`);
       setStatus('Error searching repositories');
       setProgress(0);
@@ -129,7 +166,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
 
         // Filter out repositories that already exist
         const newFallbackRepos = fallbackRepos.filter(repo => 
-          !existingProjectUrls.includes(repo.url)
+          repo && repo.url && !existingProjectUrls?.includes(repo.url)
         );
 
         if (newFallbackRepos.length > 0) {
@@ -184,7 +221,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
     setStatus('Adding repository...');
 
     try {
-      const result = await GitHubService.addProjectFromGitHub(manualUrl);
+      const result = await ScrapeService.addProjectFromGitHub(manualUrl);
 
       if (result.success && result.agent) {
         setImportedProjects([result.agent]);
@@ -396,18 +433,22 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
                   <div className="max-h-60 overflow-y-auto border rounded-md">
                     <ul className="divide-y">
                       {importedProjects.map((project, index) => (
-                        <li key={`${project.id || index}`} className="p-2 hover:bg-gray-50 flex items-center space-x-2">
+                        <li key={`${project?.id || index}`} className="p-2 hover:bg-gray-50 flex items-center space-x-2">
                           <CheckCircle className="h-4 w-4 text-green-500" />
-                          <span className="font-medium">{project.name}</span>
-                          <span className="text-sm text-gray-500">({project.owner})</span>
-                          <a 
-                            href={project.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-blue-500 hover:underline ml-auto text-sm flex items-center"
-                          >
-                            <Link className="h-3 w-3 mr-1" /> View
-                          </a>
+                          <span className="font-medium">{project?.name || 'Unnamed Repository'}</span>
+                          <span className="text-sm text-gray-500">({project?.owner || 'unknown'})</span>
+                          {project?.url ? (
+                            <a 
+                              href={project.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-blue-500 hover:underline ml-auto text-sm flex items-center"
+                            >
+                              <Link className="h-3 w-3 mr-1" /> View
+                            </a>
+                          ) : (
+                            <span className="ml-auto text-sm text-gray-400">No URL</span>
+                          )}
                         </li>
                       ))}
                     </ul>
