@@ -23,31 +23,31 @@ const Navbar = () => {
   }, [isMobile]);
 
   return (
-    <nav className="sticky top-0 z-40 w-full bg-white/80 backdrop-blur-md border-b border-gray-200/80">
+    <nav className="sticky top-0 z-40 w-full bg-white/90 backdrop-blur-md border-b border-gray-100">
       <div className="max-w-7xl mx-auto px-4 md:px-8">
-        <div className="flex justify-between items-center h-16">
+        <div className="flex justify-between items-center h-20">
           <div className="flex items-center">
-            <Link to="/" className="flex items-center space-x-2 font-bold text-lg">
-              <span className="text-blue-600">Agent</span>
+            <Link to="/" className="flex items-center space-x-2 font-bold text-xl">
+              <span className="gradient-text">Agent</span>
               <span>MCP</span>
             </Link>
           </div>
           
-          <div className="hidden sm:flex items-center space-x-4">
-            <Link to="/" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+          <div className="hidden sm:flex items-center space-x-6">
+            <Link to="/" className="text-gray-800 hover:text-primary px-3 py-2 rounded-md text-sm font-medium transition-colors">
               Home
             </Link>
-            <Link to="/about" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+            <Link to="/about" className="text-gray-800 hover:text-primary px-3 py-2 rounded-md text-sm font-medium transition-colors">
               About
             </Link>
-            <Link to="/resources" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+            <Link to="/resources" className="text-gray-800 hover:text-primary px-3 py-2 rounded-md text-sm font-medium transition-colors">
               Resources
             </Link>
             <a 
               href="https://github.com/AgentMCP/ai-agent-directory" 
               target="_blank" 
               rel="noopener noreferrer" 
-              className="text-gray-700 hover:text-blue-600 flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium transition-colors"
+              className="text-gray-800 hover:text-primary flex items-center gap-1 px-3 py-2 rounded-md text-sm font-medium transition-colors"
             >
               <Github className="w-4 h-4" />
               <span>GitHub</span>
@@ -58,7 +58,7 @@ const Navbar = () => {
           <div className="sm:hidden">
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className="text-gray-700 focus:outline-none"
+              className="text-gray-800 focus:outline-none"
             >
               {isOpen ? (
                 <X className="h-6 w-6" />
@@ -72,23 +72,23 @@ const Navbar = () => {
 
       {/* Mobile menu */}
       {isOpen && (
-        <div className="sm:hidden bg-white border-b border-gray-200 py-2">
+        <div className="sm:hidden bg-white border-b border-gray-100 py-2 animate-fade-in">
           <div className="px-4 space-y-1">
             <Link
               to="/"
-              className="text-gray-700 hover:bg-gray-100 block px-3 py-2 rounded-md text-base font-medium"
+              className="text-gray-800 hover:bg-secondary hover:text-primary block px-3 py-2 rounded-xl text-base font-medium transition-colors"
             >
               Home
             </Link>
             <Link
               to="/about"
-              className="text-gray-700 hover:bg-gray-100 block px-3 py-2 rounded-md text-base font-medium"
+              className="text-gray-800 hover:bg-secondary hover:text-primary block px-3 py-2 rounded-xl text-base font-medium transition-colors"
             >
               About
             </Link>
             <Link
               to="/resources"
-              className="text-gray-700 hover:bg-gray-100 block px-3 py-2 rounded-md text-base font-medium"
+              className="text-gray-800 hover:bg-secondary hover:text-primary block px-3 py-2 rounded-xl text-base font-medium transition-colors"
             >
               Resources
             </Link>
@@ -96,7 +96,7 @@ const Navbar = () => {
               href="https://github.com/AgentMCP/ai-agent-directory"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-700 hover:bg-gray-100 flex items-center gap-1 px-3 py-2 rounded-md text-base font-medium"
+              className="text-gray-800 hover:bg-secondary hover:text-primary flex items-center gap-1 px-3 py-2 rounded-xl text-base font-medium transition-colors"
             >
               <Github className="w-4 h-4" />
               <span>GitHub</span>

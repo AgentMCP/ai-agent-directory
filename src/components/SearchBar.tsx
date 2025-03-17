@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { Search, X, RefreshCw, Plus } from 'lucide-react';
 
@@ -59,7 +58,7 @@ const SearchBar = ({
     <div 
       className={`w-full transition-all duration-300 ${
         isSticky 
-          ? 'sticky top-20 z-30 py-2 bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50' 
+          ? 'sticky top-20 z-30 py-2 bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-100' 
           : ''
       }`}
     >
@@ -68,16 +67,16 @@ const SearchBar = ({
         className={`relative ${isCompact ? 'max-w-xl mx-auto' : 'max-w-2xl mx-auto'}`}
       >
         <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className={`h-4 w-4 transition-colors ${isFocused ? 'text-blue-500' : 'text-gray-400'}`} />
+          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+            <Search className={`h-4 w-4 transition-colors ${isFocused ? 'text-primary' : 'text-gray-400'}`} />
           </div>
           <input
             ref={inputRef}
             type="text"
-            className={`block w-full pl-9 pr-10 ${isCompact ? 'py-2 text-sm' : 'py-3'} border rounded-lg bg-white/90 transition-all duration-200 ${
+            className={`block w-full pl-10 pr-10 ${isCompact ? 'py-3 text-sm' : 'py-4'} border rounded-full bg-white/90 transition-all duration-200 ${
               isFocused 
-                ? 'border-blue-500 shadow-md ring-1 ring-blue-200' 
-                : 'border-gray-300 shadow-sm'
+                ? 'border-primary shadow-md ring-1 ring-primary/20' 
+                : 'border-gray-200 shadow-sm'
             }`}
             placeholder="Search AI agents, libraries, or tools..."
             value={query}
@@ -116,7 +115,7 @@ const SearchBar = ({
           )}
           <button
             type="submit"
-            className={`absolute inset-y-0 right-0 flex items-center px-3 text-white bg-gray-900 rounded-r-lg hover:bg-gray-800 transition-colors ${isCompact ? 'text-sm' : ''}`}
+            className={`absolute inset-y-0 right-0 flex items-center px-6 text-white bg-primary rounded-r-full hover:opacity-90 transition-colors ${isCompact ? 'text-sm' : ''}`}
           >
             Search
           </button>

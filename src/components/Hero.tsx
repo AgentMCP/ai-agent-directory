@@ -1,8 +1,9 @@
-
 import { useRef, useEffect, useState } from 'react';
 import SearchBar from './SearchBar';
 import { useInView } from '../utils/animations';
 import { GitHubService } from '../services/GitHubService';
+import { Button } from './ui/button';
+import { ArrowRight } from 'lucide-react';
 
 interface HeroProps {
   onSearch: (query: string) => void;
@@ -28,13 +29,13 @@ const Hero = ({ onSearch, onAddProject }: HeroProps) => {
   return (
     <div 
       ref={heroRef}
-      className="relative min-h-[40vh] flex flex-col items-center justify-center px-4 pt-16 pb-16 overflow-hidden"
+      className="relative min-h-[80vh] flex flex-col items-center justify-center px-4 pt-24 pb-24 overflow-hidden"
     >
       {/* Background elements */}
       <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute top-1/4 left-1/4 w-80 h-80 bg-blue-100 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse-soft"></div>
-        <div className="absolute top-1/3 right-1/4 w-56 h-56 bg-purple-100 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse-soft" style={{ animationDelay: '1s' }}></div>
-        <div className="absolute bottom-1/4 right-1/3 w-64 h-64 bg-pink-100 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse-soft" style={{ animationDelay: '2s' }}></div>
+        <div className="absolute top-1/4 left-1/4 w-80 h-80 bg-primary/10 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse-soft"></div>
+        <div className="absolute top-1/3 right-1/4 w-56 h-56 bg-purple-400/10 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse-soft" style={{ animationDelay: '1s' }}></div>
+        <div className="absolute bottom-1/4 right-1/3 w-64 h-64 bg-pink-400/10 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-pulse-soft" style={{ animationDelay: '2s' }}></div>
       </div>
 
       <div 
@@ -42,19 +43,28 @@ const Hero = ({ onSearch, onAddProject }: HeroProps) => {
           isVisible ? 'opacity-100' : 'opacity-0'
         }`}
       >
-        <div className="inline-block mb-4 bg-black/5 backdrop-blur-md text-sm px-3 py-1 rounded-full">
-          <span className="font-medium">1000+ Open Source Projects</span>
+        <div className="inline-block mb-6 bg-secondary text-primary text-sm px-4 py-1.5 rounded-full font-medium">
+          <span>1000+ Open Source Projects</span>
         </div>
         
-        <h1 className="text-3xl md:text-4xl lg:text-5xl font-display font-bold mb-4 text-gray-900 tracking-tight leading-tight text-balance">
-          The <span className="bg-gradient-to-r from-gray-900 via-blue-800 to-purple-900 bg-clip-text text-transparent">#1 Directory</span> for AI Agents and MCP Orchestration
+        <h1 className="text-4xl md:text-5xl lg:text-6xl font-display font-bold mb-6 tracking-tight leading-tight text-balance">
+          AI Agent & MCP <span className="gradient-text">Directory</span> Made Simple, Better.
         </h1>
         
-        <p className="text-base md:text-lg text-gray-600 mb-6 max-w-2xl mx-auto">
-          Your go-to resource for discovering cutting-edge AI agent projects and tools.
+        <p className="text-base md:text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+          Your go-to resource for discovering cutting-edge AI agent projects and tools for building autonomous systems.
         </p>
         
-        <div className="max-w-xl mx-auto">
+        <div className="flex flex-col md:flex-row gap-4 justify-center mb-10">
+          <button className="button-primary flex items-center justify-center gap-2">
+            Explore Projects <ArrowRight className="w-4 h-4" />
+          </button>
+          <button className="button-secondary flex items-center justify-center gap-2">
+            Add Your Project
+          </button>
+        </div>
+        
+        <div className="max-w-xl mx-auto mt-4">
           <SearchBar 
             defaultValue="" 
             onSearch={onSearch} 
@@ -62,40 +72,40 @@ const Hero = ({ onSearch, onAddProject }: HeroProps) => {
             isCompact={true}
           />
           
-          <div className="mt-2 flex flex-wrap justify-center gap-2 text-xs text-gray-600">
+          <div className="mt-4 flex flex-wrap justify-center gap-3 text-sm text-gray-600">
             <span className="text-gray-500">Popular:</span>
             <button 
               type="button"
               onClick={() => onSearch('autonomous')}
-              className="hover:text-gray-900 transition-colors"
+              className="px-3 py-1 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
             >
               Autonomous
             </button>
             <button 
               type="button"
               onClick={() => onSearch('LangChain')}
-              className="hover:text-gray-900 transition-colors"
+              className="px-3 py-1 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
             >
               LangChain
             </button>
             <button 
               type="button"
               onClick={() => onSearch('GPT')}
-              className="hover:text-gray-900 transition-colors"
+              className="px-3 py-1 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
             >
               GPT
             </button>
             <button 
               type="button"
               onClick={() => onSearch('Dify')}
-              className="hover:text-gray-900 transition-colors"
+              className="px-3 py-1 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
             >
               Dify
             </button>
             <button 
               type="button"
               onClick={() => onSearch('MCP')}
-              className="hover:text-gray-900 transition-colors"
+              className="px-3 py-1 rounded-full bg-gray-100 hover:bg-secondary hover:text-primary transition-colors"
             >
               MCP
             </button>
