@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { GitHubService } from '../services/GitHubService';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
@@ -7,7 +6,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from './ui/form';
 import { useForm } from 'react-hook-form';
-import { z } from 'zod';
+import * as z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from './ui/use-toast';
 import { Agent } from '../types';

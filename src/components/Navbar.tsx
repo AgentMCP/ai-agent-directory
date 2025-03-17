@@ -1,9 +1,9 @@
-
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Github } from 'lucide-react';
 import { Button } from './ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
+import LoginButton from './LoginButton';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -52,6 +52,7 @@ const Navbar = () => {
               <Github className="w-4 h-4" />
               <span>GitHub</span>
             </a>
+            <LoginButton />
           </div>
           
           <div className="sm:hidden">
@@ -95,11 +96,14 @@ const Navbar = () => {
               href="https://github.com/AgentMCP/ai-agent-directory"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-700 hover:bg-gray-100 flex items-center gap-2 px-3 py-2 rounded-md text-base font-medium"
+              className="text-gray-700 hover:bg-gray-100 flex items-center gap-1 px-3 py-2 rounded-md text-base font-medium"
             >
               <Github className="w-4 h-4" />
               <span>GitHub</span>
             </a>
+            <div className="px-3 py-2">
+              <LoginButton />
+            </div>
           </div>
         </div>
       )}

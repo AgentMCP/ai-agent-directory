@@ -17,6 +17,8 @@ import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import { CheckCircle, Link, Search, Loader2, AlertCircle, Download } from 'lucide-react';
 import { Agent } from '../types';
 import { ScrapeService } from '../services/ScrapeService';
+import { useAuth } from '../contexts/AuthContext';
+import { saveUserSearch } from '../services/firebase';
 
 interface BulkImportModalProps {
   onProjectsAdded?: (projects: Agent[]) => void;
@@ -25,6 +27,7 @@ interface BulkImportModalProps {
 
 const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImportModalProps) => {
   const { toast } = useToast();
+  const { currentUser } = useAuth();
   
   // State management
   const [isOpen, setIsOpen] = useState(false);
@@ -42,6 +45,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
   const [isFirstImport, setIsFirstImport] = useState(true);
   const [manualUrl, setManualUrl] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('AI Agent MCP');
 
   useEffect(() => {
     // Check if we've done an import before
@@ -53,8 +57,39 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
     if (savedToken) {
       setGithubToken(savedToken);
     }
-  }, []);
-
+    
+    // Check for reimport repositories
+    const reimportRepos = localStorage.getItem('reimport_repositories');
+    if (reimportRepos) {
+      try {
+        const repos = JSON.parse(reimportRepos);
+        if (Array.isArray(repos) && repos.length > 0) {
+          setImportedProjects(repos);
+          setSearchResults(repos);
+          setImportedCount(repos.length);
+          setTotalFound(repos.length);
+          setShowResults(true);
+          
+          // If onProjectsAdded callback is provided, call it with reimported repos
+          if (onProjectsAdded) {
+            onProjectsAdded(repos);
+          }
+          
+          // Clear the reimport data
+          localStorage.removeItem('reimport_repositories');
+          
+          toast({
+            title: 'Repositories Loaded',
+            description: `Loaded ${repos.length} repositories from your search history.`,
+          });
+        }
+      } catch (error) {
+        console.error('Error parsing reimport repositories:', error);
+        localStorage.removeItem('reimport_repositories');
+      }
+    }
+  }, [onProjectsAdded, toast]);
+  
   const handleSearch = async () => {
     setIsLoading(true);
     setProgress(0);
@@ -81,7 +116,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
       // Call the scrapeGitHubRepositories method to fetch repositories
       let repositories: Agent[] = [];
       try {
-        repositories = await ScrapeService.scrapeGitHubRepositories('AI Agent MCP', isFirstImport);
+        repositories = await ScrapeService.scrapeGitHubRepositories(searchQuery, isFirstImport);
         
         // Validate that we received proper data
         if (!Array.isArray(repositories)) {
@@ -145,6 +180,25 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
       // If onProjectsAdded callback is provided, call it
       if (onProjectsAdded && newRepositories.length > 0) {
         onProjectsAdded(newRepositories);
+      }
+
+      // Save search to user's account if logged in
+      if (currentUser && newRepositories.length > 0) {
+        try {
+          await saveUserSearch(
+            currentUser.uid,
+            searchQuery,
+            newRepositories
+          );
+          
+          toast({
+            title: 'Search Saved',
+            description: 'Your search has been saved to your account.',
+          });
+        } catch (saveError) {
+          console.error('Error saving search:', saveError);
+          // Don't show error to user, just log it
+        }
       }
 
       setShowSatisfactionQuery(true);
@@ -381,31 +435,31 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
             </div>
           ) : (
             <div className="flex flex-col gap-4 py-4">
-              <div className="flex flex-col space-y-2">
-                <Label htmlFor="github-token">GitHub Token (Optional)</Label>
+              <div className="space-y-2">
+                <Label htmlFor="githubToken">GitHub Token (Optional)</Label>
                 <Input 
-                  id="github-token"
-                  type="password"
-                  placeholder="ghp_123456789abcdef123456789abcdef"
+                  id="githubToken"
                   value={githubToken}
-                  onChange={(e) => {
-                    setGithubToken(e.target.value);
-                    if (e.target.value.trim()) {
-                      localStorage.setItem('github_token', e.target.value.trim());
-                    }
-                  }}
-                  className="col-span-3"
+                  onChange={(e) => setGithubToken(e.target.value)}
+                  placeholder="Enter GitHub token for higher rate limits"
+                  disabled={isLoading}
                 />
-                <p className="text-sm text-muted-foreground">
-                  Providing a GitHub token will increase rate limits and improve search results.
-                  <a 
-                    href="https://github.com/settings/tokens" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-primary underline ml-1"
-                  >
-                    Create a token
-                  </a>
+                <p className="text-xs text-gray-500">
+                  A GitHub token allows for higher API rate limits. Store it in your browser for future use.
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="searchQuery">Search Query</Label>
+                <Input
+                  id="searchQuery"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="AI Agent MCP"
+                  disabled={isLoading}
+                />
+                <p className="text-xs text-gray-500">
+                  Customize your search query to find specific repositories.
                 </p>
               </div>
 
