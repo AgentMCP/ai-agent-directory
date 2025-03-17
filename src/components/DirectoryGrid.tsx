@@ -9,7 +9,7 @@ import { paginateData } from '../utils/pagination';
 import { toast } from '@/components/ui/use-toast';
 import AddProjectForm from './AddProjectForm';
 import BulkImportModal from './BulkImportModal';
-import { RefreshCw, Search, PlusCircle } from 'lucide-react';
+import { Search, PlusCircle } from 'lucide-react';
 
 interface DirectoryGridProps {
   initialSearchQuery?: string;
@@ -249,19 +249,6 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
                 onProjectsAdded={handleBulkProjectsAdded}
                 existingProjectUrls={existingProjectUrls}
               />
-              
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleRefresh}
-                disabled={isRefreshing}
-                className="flex items-center gap-2 rounded-full h-9 px-4 border-gray-200 hover:border-primary hover:text-primary transition-colors"
-              >
-                <RefreshCw 
-                  className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} 
-                />
-                {isRefreshing ? 'Refreshing...' : 'Refresh'}
-              </Button>
             </div>
           </div>
           

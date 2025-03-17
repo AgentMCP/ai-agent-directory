@@ -29,7 +29,7 @@ const Hero = ({ onSearch, onAddProject }: HeroProps) => {
   return (
     <div 
       ref={heroRef}
-      className="relative min-h-[25vh] flex flex-col items-center justify-center px-4 pt-6 pb-4 overflow-hidden"
+      className="relative min-h-[20vh] flex flex-col items-center justify-center px-4 pt-6 pb-2 overflow-hidden"
     >
       {/* Background elements */}
       <div className="absolute inset-0 -z-10 overflow-hidden">

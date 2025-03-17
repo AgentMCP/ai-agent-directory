@@ -351,12 +351,9 @@ const ScrapeService = {
   isAIAgentRepository(repository: any): boolean {
     const { name, description, topics = [], language } = repository;
     
-    // Only accept English repositories
-    if (language && language !== 'English' && language !== 'Unknown' && language !== 'JavaScript' && 
-        language !== 'TypeScript' && language !== 'Python' && language !== 'HTML' && 
-        language !== 'CSS' && language !== 'Java' && language !== 'C#' && 
-        language !== 'C++' && language !== 'C' && language !== 'Ruby' && 
-        language !== 'Go' && language !== 'PHP' && language !== 'Shell') {
+    // Exclude non-English languages
+    const nonEnglishLanguages = ['Chinese', 'Japanese', 'Korean', 'Russian', 'Arabic'];
+    if (language && nonEnglishLanguages.includes(language)) {
       return false;
     }
     
@@ -387,12 +384,9 @@ const ScrapeService = {
   isMCPRepository(repository: any): boolean {
     const { name, description, topics = [], language } = repository;
     
-    // Only accept English repositories
-    if (language && language !== 'English' && language !== 'Unknown' && language !== 'JavaScript' && 
-        language !== 'TypeScript' && language !== 'Python' && language !== 'HTML' && 
-        language !== 'CSS' && language !== 'Java' && language !== 'C#' && 
-        language !== 'C++' && language !== 'C' && language !== 'Ruby' && 
-        language !== 'Go' && language !== 'PHP' && language !== 'Shell') {
+    // Exclude non-English languages
+    const nonEnglishLanguages = ['Chinese', 'Japanese', 'Korean', 'Russian', 'Arabic'];
+    if (language && nonEnglishLanguages.includes(language)) {
       return false;
     }
     
@@ -440,6 +434,18 @@ const ScrapeService = {
       };
     }
     
+    // Format license information properly
+    let licenseText = 'Unknown';
+    if (repo.license) {
+      if (typeof repo.license === 'string') {
+        licenseText = repo.license;
+      } else if (typeof repo.license === 'object' && repo.license.name) {
+        licenseText = repo.license.name;
+      } else if (typeof repo.license === 'object' && repo.license.spdx_id) {
+        licenseText = repo.license.spdx_id;
+      }
+    }
+    
     // Ensure all fields have valid values
     return {
       id: `github-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
@@ -453,7 +459,7 @@ const ScrapeService = {
       language: repo.language || 'Unknown',
       updated: repo.updated || new Date().toISOString(),
       topics: Array.isArray(repo.topics) ? repo.topics : ['ai', 'agent'],
-      license: repo.license || 'Unknown'
+      license: licenseText
     };
   },
   
@@ -663,26 +669,12 @@ const ScrapeService = {
         if (response.ok) {
           const data = await response.json();
           
-          // Check if repository is in English or a common programming language
-          if (data.language && 
-              data.language !== 'English' && 
-              data.language !== 'Unknown' && 
-              data.language !== 'JavaScript' && 
-              data.language !== 'TypeScript' && 
-              data.language !== 'Python' && 
-              data.language !== 'HTML' && 
-              data.language !== 'CSS' && 
-              data.language !== 'Java' && 
-              data.language !== 'C#' && 
-              data.language !== 'C++' && 
-              data.language !== 'C' && 
-              data.language !== 'Ruby' && 
-              data.language !== 'Go' && 
-              data.language !== 'PHP' && 
-              data.language !== 'Shell') {
+          // Check if repository is in a non-English language
+          const nonEnglishLanguages = ['Chinese', 'Japanese', 'Korean', 'Russian', 'Arabic'];
+          if (data.language && nonEnglishLanguages.includes(data.language)) {
             return {
               success: false,
-              error: 'Only repositories in English or common programming languages are accepted'
+              error: 'Only repositories in English are accepted'
             };
           }
           
@@ -696,7 +688,7 @@ const ScrapeService = {
             forks: data.forks_count,
             language: data.language || '',
             topics: data.topics || ['ai', 'agent'],
-            license: data.license ? data.license.name : '',
+            license: data.license ? data.license : '',
             updated: data.updated_at
           };
           
