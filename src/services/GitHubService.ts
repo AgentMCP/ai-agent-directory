@@ -340,10 +340,48 @@ class GitHubService {
       setTimeout(() => {
         // Filter for projects explicitly related to AI Agents or MCP
         const agentMcpProjects = getAllProjects().filter(agent => {
+          // Check if the repository is in English by examining name and description
+          if (this.containsNonEnglishCharacters(agent.name) || this.containsNonEnglishCharacters(agent.description)) {
+            return false;
+          }
+          
           const topics = agent.topics.map(topic => topic.toLowerCase());
           const nameAndDesc = (agent.name + ' ' + agent.description).toLowerCase();
-          return topics.some(t => t.includes('agent') || t.includes('mcp') || t.includes('autonomous')) || 
-                 nameAndDesc.includes('agent') || nameAndDesc.includes('mcp') || nameAndDesc.includes('autonomous');
+          
+          // More specific agent-related keywords
+          const agentKeywords = [
+            'ai agent', 'ai-agent', 'aiagent',
+            'llm agent', 'llm-agent', 'llmagent',
+            'autonomous agent', 'agent framework',
+            'agent-framework', 'agent orchestration',
+            'agent-orchestration', 'ai assistant',
+            'ai-assistant', 'llm framework',
+            'agent system', 'multi-agent',
+            'multiagent', 'agent communication'
+          ];
+          
+          // MCP-related keywords
+          const mcpKeywords = [
+            'mcp', 'model context protocol',
+            'context protocol', 'context orchestration',
+            'model orchestration', 'context handling',
+            'agent communication', 'agent protocol',
+            'model context', 'context window',
+            'context framework', 'agent interoperability',
+            'agent communication protocol',
+            'model integration'
+          ];
+          
+          // Check if any of the keywords are present in topics or name/description
+          const hasAgentKeyword = agentKeywords.some(keyword => 
+            topics.some(t => t.includes(keyword)) || nameAndDesc.includes(keyword)
+          );
+          
+          const hasMcpKeyword = mcpKeywords.some(keyword => 
+            topics.some(t => t.includes(keyword)) || nameAndDesc.includes(keyword)
+          );
+          
+          return hasAgentKeyword || hasMcpKeyword;
         });
         
         // Sort by stars descending
@@ -356,6 +394,34 @@ class GitHubService {
     });
   }
   
+  // Helper method to detect non-English characters
+  static containsNonEnglishCharacters(text: string | null | undefined): boolean {
+    if (!text) return false; // Empty text is considered valid English
+    
+    // Common non-English character ranges (Unicode blocks)
+    const nonEnglishPatterns = [
+      /[\u4E00-\u9FFF]/,  // Chinese
+      /[\u3040-\u309F\u30A0-\u30FF]/,  // Japanese
+      /[\uAC00-\uD7AF]/,  // Korean
+      /[\u0400-\u04FF]/,  // Cyrillic (Russian)
+      /[\u0600-\u06FF]/,  // Arabic
+      /[\u0900-\u097F]/   // Devanagari
+    ];
+    
+    // Check if text contains significant non-English characters
+    for (const pattern of nonEnglishPatterns) {
+      if (pattern.test(text)) {
+        // If more than a few characters match non-English patterns, consider it non-English
+        const matches = text.match(pattern);
+        if (matches && matches.length > 2) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+
   static addProjectFromGitHub(url: string): Promise<{success: boolean, error?: string, agent?: Agent}> {
     return new Promise((resolve) => {
       setTimeout(() => {

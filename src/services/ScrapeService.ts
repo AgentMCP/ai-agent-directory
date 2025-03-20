@@ -61,22 +61,22 @@ const ScrapeService = {
     const maxResults = isFirstImport ? 250 : 100;
     
     try {
-      // Search terms related to AI Agents and MCP
+      // Search terms related to AI Agents and MCP - more specific to ensure quality results
       const searchTerms = [
-        'AI Agent GitHub',
-        'MCP GitHub',
-        'Model Context Protocol GitHub',
-        'AI Agent Framework GitHub',
-        'Autonomous AI agent GitHub',
-        'AI assistant GitHub',
-        'LLM agent GitHub',
-        'AI tool GitHub',
-        'context orchestration GitHub',
-        'MCP framework GitHub',
-        'MCP agent GitHub',
-        'Model Context Protocol agent GitHub',
-        'AI agent orchestration GitHub',
-        'agent communication protocol GitHub'
+        'AI Agent Framework',
+        'Model Context Protocol',
+        'AI Agent Orchestration',
+        'LLM Agent Framework',
+        'Autonomous AI Agent',
+        'AI Assistant Framework',
+        'Agent Communication Protocol',
+        'MCP Framework',
+        'AI Agent System',
+        'Multi-Agent Framework',
+        'LLM Agent Orchestration',
+        'Agent Interoperability',
+        'Model Context Handling',
+        'AI Agent Communication'
       ];
       
       let allRepositories: any[] = [];
@@ -133,12 +133,22 @@ const ScrapeService = {
       
       console.log(`Found ${allRepositories.length} repositories before validation`);
       
-      // Validate repositories - only keep those matching criteria for AI Agents and MCP
-      const repositories = allRepositories.filter(repo => 
-        (this.isAIAgentRepository(repo) || this.isMCPRepository(repo)) && 
-        repo.stars >= 5 && 
-        (repo.forks >= 1 || (repo.license !== undefined && repo.license !== null))
-      );
+      // Enhanced validation - ensure repositories are in English and contain specific agent-related terms
+      const repositories = allRepositories.filter(repo => {
+        // First check if it's an English repository
+        if (!this.isEnglishContent(repo.name) || !this.isEnglishContent(repo.description)) {
+          return false;
+        }
+        
+        // Then check if it's related to AI Agents or MCP
+        const isAgentOrMcp = this.isAIAgentRepository(repo) || this.isMCPRepository(repo);
+        
+        // Additional quality filters
+        const hasMinimumStars = repo.stars >= 5;
+        const hasForksOrLicense = repo.forks >= 1 || (repo.license !== undefined && repo.license !== null);
+        
+        return isAgentOrMcp && hasMinimumStars && hasForksOrLicense;
+      });
       
       // Convert to Agent objects
       const validRepositories = repositories
@@ -201,8 +211,10 @@ const ScrapeService = {
         const searchTerms = query.split(' ').filter(term => term.length > 2);
         const queryString = searchTerms.join('+');
         
-        // Use the native fetch API instead of axios
-        const apiUrl = `https://api.github.com/search/repositories?q=${queryString}+in:name,description,readme&sort=stars&order=desc&per_page=100`;
+        // Add language filter to the query to prioritize English content
+        // language:en will filter for repositories with English as the primary language
+        // We'll also exclude repositories with certain languages to avoid non-English content
+        const apiUrl = `https://api.github.com/search/repositories?q=${queryString}+in:name,description,readme+language:en+-language:zh+-language:ru+-language:ko+-language:ja&sort=stars&order=desc&per_page=100`;
         
         // First check if the fetch will succeed (CORS check)
         try {
@@ -217,18 +229,21 @@ const ScrapeService = {
             
             if (data && data.items) {
               for (const item of data.items) {
-                searchResults.push({
-                  url: item.html_url,
-                  name: item.name,
-                  description: item.description || '',
-                  owner: item.owner.login,
-                  stars: item.stargazers_count,
-                  forks: item.forks_count,
-                  topics: item.topics || [],
-                  language: item.language,
-                  license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
-                  updated: item.updated_at
-                });
+                // Additional check for English content
+                if (this.isEnglishContent(item.name) && this.isEnglishContent(item.description)) {
+                  searchResults.push({
+                    url: item.html_url,
+                    name: item.name,
+                    description: item.description || '',
+                    owner: item.owner.login,
+                    stars: item.stargazers_count,
+                    forks: item.forks_count,
+                    topics: item.topics || [],
+                    language: item.language,
+                    license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
+                    updated: item.updated_at
+                  });
+                }
               }
             }
           } else {
@@ -247,6 +262,8 @@ const ScrapeService = {
           // Try a simpler fetch without the Authorization header if there was a CORS issue
           if (githubToken && fetchError.toString().includes('CORS')) {
             console.log('Trying without authorization header due to CORS issues');
+            
+            // Use the same URL with language filters
             const simpleResponse = await fetch(apiUrl, { 
               method: 'GET',
               headers: { 'Accept': 'application/vnd.github.v3+json' }
@@ -257,18 +274,21 @@ const ScrapeService = {
               
               if (data && data.items) {
                 for (const item of data.items) {
-                  searchResults.push({
-                    url: item.html_url,
-                    name: item.name,
-                    description: item.description || '',
-                    owner: item.owner.login,
-                    stars: item.stargazers_count,
-                    forks: item.forks_count,
-                    topics: item.topics || [],
-                    language: item.language,
-                    license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
-                    updated: item.updated_at
-                  });
+                  // Additional check for English content
+                  if (this.isEnglishContent(item.name) && this.isEnglishContent(item.description)) {
+                    searchResults.push({
+                      url: item.html_url,
+                      name: item.name,
+                      description: item.description || '',
+                      owner: item.owner.login,
+                      stars: item.stargazers_count,
+                      forks: item.forks_count,
+                      topics: item.topics || [],
+                      language: item.language,
+                      license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
+                      updated: item.updated_at
+                    });
+                  }
                 }
                 return searchResults;
               }
@@ -410,7 +430,12 @@ const ScrapeService = {
   isAIAgentRepository(repository: any): boolean {
     const { name, description, topics = [], language } = repository;
     
-    // Exclude non-English languages
+    // Check if content appears to be non-English
+    if (!this.isEnglishContent(name) || !this.isEnglishContent(description)) {
+      return false;
+    }
+    
+    // Exclude non-English programming languages
     const nonEnglishLanguages = ['Chinese', 'Japanese', 'Korean', 'Russian', 'Arabic'];
     if (language && nonEnglishLanguages.includes(language)) {
       return false;
@@ -422,18 +447,19 @@ const ScrapeService = {
       ...topics
     ].filter(Boolean).join(' ').toLowerCase();
     
-    // Keywords related to AI agents
+    // Keywords related to AI agents - require exact matches
     const aiAgentKeywords = [
       'ai agent', 'ai-agent', 'aiagent',
       'llm agent', 'llm-agent', 'llmagent',
-      'autonomous', 'agent', 'assistant',
-      'chatbot', 'chat-bot', 'chatgpt',
-      'gpt', 'openai', 'langchain',
-      'autogpt', 'babyagi', 'agentgpt',
-      'agent framework', 'agent-framework',
-      'agent orchestration', 'agent-orchestration'
+      'autonomous agent', 'agent framework',
+      'agent-framework', 'agent orchestration',
+      'agent-orchestration', 'ai assistant',
+      'ai-assistant', 'llm framework',
+      'agent system', 'multi-agent',
+      'multiagent', 'agent communication'
     ];
     
+    // Check for exact keyword matches
     return aiAgentKeywords.some(keyword => textToSearch.includes(keyword));
   },
   
@@ -443,7 +469,12 @@ const ScrapeService = {
   isMCPRepository(repository: any): boolean {
     const { name, description, topics = [], language } = repository;
     
-    // Exclude non-English languages
+    // Check if content appears to be non-English
+    if (!this.isEnglishContent(name) || !this.isEnglishContent(description)) {
+      return false;
+    }
+    
+    // Exclude non-English programming languages
     const nonEnglishLanguages = ['Chinese', 'Japanese', 'Korean', 'Russian', 'Arabic'];
     if (language && nonEnglishLanguages.includes(language)) {
       return false;
@@ -455,7 +486,7 @@ const ScrapeService = {
       ...topics
     ].filter(Boolean).join(' ').toLowerCase();
     
-    // Keywords specifically related to MCP
+    // Keywords specifically related to MCP - require exact matches
     const mcpKeywords = [
       'mcp', 'model context protocol',
       'context protocol', 'context orchestration',
@@ -467,7 +498,39 @@ const ScrapeService = {
       'model integration'
     ];
     
+    // Check for exact keyword matches
     return mcpKeywords.some(keyword => textToSearch.includes(keyword));
+  },
+  
+  /**
+   * Check if text content appears to be in English
+   * Uses a simple heuristic to detect non-English content
+   */
+  isEnglishContent(text: string | null | undefined): boolean {
+    if (!text) return true; // Empty text is considered valid
+    
+    // Common non-English character ranges (Unicode blocks)
+    const nonEnglishPatterns = [
+      /[\u4E00-\u9FFF]/,  // Chinese
+      /[\u3040-\u309F\u30A0-\u30FF]/,  // Japanese
+      /[\uAC00-\uD7AF]/,  // Korean
+      /[\u0400-\u04FF]/,  // Cyrillic (Russian)
+      /[\u0600-\u06FF]/,  // Arabic
+      /[\u0900-\u097F]/   // Devanagari
+    ];
+    
+    // Check if text contains significant non-English characters
+    for (const pattern of nonEnglishPatterns) {
+      if (pattern.test(text)) {
+        // If more than a few characters match non-English patterns, consider it non-English
+        const matches = text.match(pattern);
+        if (matches && matches.length > 2) {
+          return false;
+        }
+      }
+    }
+    
+    return true;
   },
   
   /**
@@ -573,7 +636,7 @@ const ScrapeService = {
       {
         id: `fallback-${Date.now()}-4`,
         name: 'MCP Framework',
-        description: 'Model Context Orchestration Framework for AI Agents',
+        description: 'Model Context Protocol implementation for AI Agents',
         stars: 3500,
         forks: 450,
         url: 'https://github.com/AgentMCP/mcp-framework',
@@ -689,6 +752,71 @@ const ScrapeService = {
     return combinedRepos.slice(0, maxResults);
   },
 
+  /**
+   * Get top agent MCP projects
+   */
+  getTopAgentMcpProjects(): Promise<Agent[]> {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        // Get all projects
+        const allProjects = this.getAllExistingProjects();
+        
+        // Filter for projects explicitly related to AI Agents or MCP using more specific criteria
+        const agentMcpProjects = allProjects.filter(agent => {
+          // First check if content is in English
+          if (!this.isEnglishContent(agent.name) || !this.isEnglishContent(agent.description)) {
+            return false;
+          }
+          
+          const topics = agent.topics.map(topic => topic.toLowerCase());
+          const nameAndDesc = (agent.name + ' ' + agent.description).toLowerCase();
+          
+          // More specific agent-related keywords
+          const agentKeywords = [
+            'ai agent', 'ai-agent', 'aiagent',
+            'llm agent', 'llm-agent', 'llmagent',
+            'autonomous agent', 'agent framework',
+            'agent-framework', 'agent orchestration',
+            'agent-orchestration', 'ai assistant',
+            'ai-assistant', 'llm framework',
+            'agent system', 'multi-agent',
+            'multiagent', 'agent communication'
+          ];
+          
+          // MCP-related keywords
+          const mcpKeywords = [
+            'mcp', 'model context protocol',
+            'context protocol', 'context orchestration',
+            'model orchestration', 'context handling',
+            'agent communication', 'agent protocol',
+            'model context', 'context window',
+            'context framework', 'agent interoperability',
+            'agent communication protocol',
+            'model integration'
+          ];
+          
+          // Check if any of the keywords are present in topics or name/description
+          const hasAgentKeyword = agentKeywords.some(keyword => 
+            topics.some(t => t.includes(keyword)) || nameAndDesc.includes(keyword)
+          );
+          
+          const hasMcpKeyword = mcpKeywords.some(keyword => 
+            topics.some(t => t.includes(keyword)) || nameAndDesc.includes(keyword)
+          );
+          
+          return hasAgentKeyword || hasMcpKeyword;
+        });
+        
+        // Sort by stars descending
+        const topProjects = [...agentMcpProjects]
+          .sort((a, b) => b.stars - a.stars)
+          .slice(0, 10);
+          
+        resolve(topProjects);
+      }, 300);
+    });
+  },
+  
   /**
    * Get all existing projects from all sources
    */
@@ -863,7 +991,7 @@ const ScrapeService = {
         error: 'Failed to add project'
       };
     }
-  }
+  },
 };
 
 export { ScrapeService };
