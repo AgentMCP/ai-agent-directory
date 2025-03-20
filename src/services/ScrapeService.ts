@@ -13,10 +13,30 @@ const loadUserSubmittedProjects = () => {
   return [];
 };
 
+// Function to remove duplicates from an array of projects
+const removeDuplicates = (projects: Agent[]): Agent[] => {
+  const uniqueProjects: Agent[] = [];
+  
+  for (const project of projects) {
+    if (!uniqueProjects.some(existingProject => 
+      (existingProject.url && project.url && existingProject.url.toLowerCase() === project.url.toLowerCase()) ||
+      (existingProject.name && project.name && existingProject.owner && project.owner && 
+       existingProject.name.toLowerCase() === project.name.toLowerCase() && 
+       existingProject.owner.toLowerCase() === project.owner.toLowerCase())
+    )) {
+      uniqueProjects.push(project);
+    }
+  }
+  
+  return uniqueProjects;
+};
+
 // Save projects to localStorage
 const saveUserSubmittedProjects = (projects: Agent[]) => {
   try {
-    localStorage.setItem('userSubmittedProjects', JSON.stringify(projects));
+    // Remove duplicates before saving
+    const uniqueProjects = removeDuplicates(projects);
+    localStorage.setItem('userSubmittedProjects', JSON.stringify(uniqueProjects));
   } catch (error) {
     console.error('Error saving projects:', error);
   }
@@ -134,9 +154,10 @@ const ScrapeService = {
       const uniqueRepositories = validRepositories.filter(newRepo => {
         // Check if this repository URL already exists in any project
         return !existingProjects.some(existingRepo => 
-          existingRepo.repoUrl.toLowerCase() === newRepo.repoUrl.toLowerCase() ||
-          (existingRepo.name.toLowerCase() === newRepo.name.toLowerCase() && 
-           existingRepo.author.toLowerCase() === newRepo.author.toLowerCase())
+          (existingRepo.url && newRepo.url && existingRepo.url.toLowerCase() === newRepo.url.toLowerCase()) ||
+          (existingRepo.name && newRepo.name && existingRepo.owner && newRepo.owner && 
+           existingRepo.name.toLowerCase() === newRepo.name.toLowerCase() && 
+           existingRepo.owner.toLowerCase() === newRepo.owner.toLowerCase())
         );
       });
       
@@ -695,8 +716,9 @@ const ScrapeService = {
       console.error('Error loading real projects from GitHubService:', error);
     }
     
-    // Combine all projects
-    return [...USER_SUBMITTED_PROJECTS, ...localStorageProjects, ...realProjects];
+    // Combine all projects and remove duplicates
+    const allProjects = [...USER_SUBMITTED_PROJECTS, ...localStorageProjects, ...realProjects];
+    return removeDuplicates(allProjects);
   },
   
   /**
@@ -766,13 +788,14 @@ const ScrapeService = {
           
           // Check for duplicates
           const existingProjects = this.getAllExistingProjects();
-          const isDuplicate = existingProjects.some(existingRepo => 
-            existingRepo.repoUrl.toLowerCase() === agent.repoUrl.toLowerCase() ||
-            (existingRepo.name.toLowerCase() === agent.name.toLowerCase() && 
-             existingRepo.author.toLowerCase() === agent.author.toLowerCase())
+          const isDuplicateProject = existingProjects.some(existingRepo => 
+            (existingRepo.url && agent.url && existingRepo.url.toLowerCase() === agent.url.toLowerCase()) ||
+            (existingRepo.name && agent.name && existingRepo.owner && agent.owner && 
+             existingRepo.name.toLowerCase() === agent.name.toLowerCase() && 
+             existingRepo.owner.toLowerCase() === agent.owner.toLowerCase())
           );
           
-          if (isDuplicate) {
+          if (isDuplicateProject) {
             return {
               success: false,
               error: 'This project already exists in the directory'
@@ -811,13 +834,14 @@ const ScrapeService = {
 
       // Check for duplicates
       const existingProjects = this.getAllExistingProjects();
-      const isDuplicate = existingProjects.some(existingRepo => 
-        existingRepo.repoUrl.toLowerCase() === agent.repoUrl.toLowerCase() ||
-        (existingRepo.name.toLowerCase() === agent.name.toLowerCase() && 
-         existingRepo.author.toLowerCase() === agent.author.toLowerCase())
+      const isDuplicateProject = existingProjects.some(existingRepo => 
+        (existingRepo.url && agent.url && existingRepo.url.toLowerCase() === agent.url.toLowerCase()) ||
+        (existingRepo.name && agent.name && existingRepo.owner && agent.owner && 
+         existingRepo.name.toLowerCase() === agent.name.toLowerCase() && 
+         existingRepo.owner.toLowerCase() === agent.owner.toLowerCase())
       );
       
-      if (isDuplicate) {
+      if (isDuplicateProject) {
         return {
           success: false,
           error: 'This project already exists in the directory'

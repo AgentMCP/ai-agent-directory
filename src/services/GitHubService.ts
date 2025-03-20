@@ -241,6 +241,24 @@ const saveProjects = () => {
 // Initialize by loading saved projects
 loadSavedProjects();
 
+// Function to remove duplicates from an array of projects
+const removeDuplicates = (projects: Agent[]): Agent[] => {
+  const uniqueProjects: Agent[] = [];
+  
+  for (const project of projects) {
+    if (!uniqueProjects.some(existingProject => 
+      (existingProject.url && project.url && existingProject.url.toLowerCase() === project.url.toLowerCase()) ||
+      (existingProject.name && project.name && existingProject.owner && project.owner && 
+       existingProject.name.toLowerCase() === project.name.toLowerCase() && 
+       existingProject.owner.toLowerCase() === project.owner.toLowerCase())
+    )) {
+      uniqueProjects.push(project);
+    }
+  }
+  
+  return uniqueProjects;
+};
+
 // Combine all projects
 const getAllProjects = () => {
   // Get user-submitted projects from localStorage
@@ -254,7 +272,9 @@ const getAllProjects = () => {
     console.error('Error loading saved projects:', error);
   }
   
-  return [...REAL_PROJECTS, ...USER_SUBMITTED_PROJECTS, ...userProjects];
+  // Combine all projects and remove duplicates
+  const allProjects = [...REAL_PROJECTS, ...USER_SUBMITTED_PROJECTS, ...userProjects];
+  return removeDuplicates(allProjects);
 };
 
 class GitHubService {
