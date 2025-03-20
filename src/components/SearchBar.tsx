@@ -86,9 +86,14 @@ const SearchBar = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSearching(true);
-    const terms = query.split(' ').filter(term => term.trim() !== '');
+    
+    const normalizedQuery = query.trim();
+    const terms = normalizedQuery.split(/\s+/).filter(term => term.trim() !== '');
+    
+    console.log("Search submitted with query:", normalizedQuery, "terms:", terms);
+    
     setSearchTerms(terms);
-    onSearch(query);
+    onSearch(normalizedQuery);
     setShowSuggestions(false);
     
     // Simulate a brief loading state for better UX
@@ -101,6 +106,7 @@ const SearchBar = ({
   };
 
   const clearSearch = () => {
+    console.log("Search cleared");
     setQuery('');
     setSearchTerms([]);
     setSuggestions([]);
