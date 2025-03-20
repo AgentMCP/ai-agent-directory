@@ -110,7 +110,10 @@ const SearchBar = ({
     setQuery('');
     setSearchTerms([]);
     setSuggestions([]);
+    
+    // Explicitly call onSearch with empty string to reset the directory
     onSearch('');
+    
     if (inputRef.current) {
       inputRef.current.focus();
     }

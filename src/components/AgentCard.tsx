@@ -1,134 +1,176 @@
-import { Agent } from "../types";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "./ui/card";
-import { Badge } from "./ui/badge";
-import { StarIcon, GitForkIcon, ArrowUpRight } from "lucide-react";
-import AgentIntegrationButtons from "./AgentIntegrationButtons";
+import { useState } from 'react';
+import { Agent } from '../types';
+import { Star, GitFork, ExternalLink, Clock, Code, Tag, Shield, Heart } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import AgentIntegrationButtons from './AgentIntegrationButtons';
+import { motion } from 'framer-motion';
 
 interface AgentCardProps {
   agent: Agent;
 }
 
 const AgentCard = ({ agent }: AgentCardProps) => {
-  const { 
-    name, 
-    description, 
-    stars, 
-    forks, 
-    url, 
-    owner, 
-    avatar, 
-    language, 
-    topics, 
-    license,
-    isLoading 
-  } = agent;
-
-  if (isLoading) {
+  const [isHovered, setIsHovered] = useState(false);
+  
+  if (agent.isLoading) {
     return (
-      <Card className="h-full opacity-70 animate-pulse rounded-xl border-0 shadow-lg">
-        <CardHeader className="pb-2">
-          <div className="w-3/4 h-6 bg-gray-200 rounded"></div>
-        </CardHeader>
-        <CardContent className="pb-3">
-          <div className="space-y-2">
-            <div className="w-full h-4 bg-gray-200 rounded"></div>
-            <div className="w-5/6 h-4 bg-gray-200 rounded"></div>
-            <div className="w-4/6 h-4 bg-gray-200 rounded"></div>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden h-full animate-pulse">
+        <div className="h-40 bg-gray-200"></div>
+        <div className="p-4">
+          <div className="h-6 bg-gray-200 rounded w-3/4 mb-3"></div>
+          <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
+          <div className="h-4 bg-gray-200 rounded w-5/6 mb-4"></div>
+          <div className="flex space-x-2 mb-3">
+            <div className="h-6 bg-gray-200 rounded w-16"></div>
+            <div className="h-6 bg-gray-200 rounded w-16"></div>
           </div>
-        </CardContent>
-        <CardFooter>
-          <div className="w-full flex justify-between">
-            <div className="w-1/3 h-4 bg-gray-200 rounded"></div>
-            <div className="w-1/3 h-4 bg-gray-200 rounded"></div>
-          </div>
-        </CardFooter>
-      </Card>
+          <div className="h-8 bg-gray-200 rounded w-full"></div>
+        </div>
+      </div>
     );
   }
 
-  const formatNumber = (num: number) => {
-    if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'k';
-    }
-    return num.toString();
-  };
-
+  const formattedDate = agent.updated 
+    ? formatDistanceToNow(new Date(agent.updated), { addSuffix: true }) 
+    : 'Unknown';
+  
+  const truncatedDescription = agent.description.length > 120 
+    ? `${agent.description.substring(0, 120)}...` 
+    : agent.description;
+  
+  const languageColor = getLanguageColor(agent.language);
+  
   return (
-    <Card className="h-full flex flex-col transition-all duration-200 hover:shadow-xl group overflow-hidden rounded-xl border-0 shadow-md bg-white">
-      <CardHeader className="pb-2 flex items-start gap-3">
-        <div className="flex-shrink-0">
-          <img 
-            src={avatar} 
-            alt={`${owner} avatar`} 
-            className="w-10 h-10 rounded-full shadow-sm"
-          />
-        </div>
-        <div className="flex-grow min-w-0">
-          <CardTitle className="text-base font-semibold leading-tight truncate flex items-center gap-1">
-            <a 
-              href={url} 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="hover:text-primary transition-colors"
-            >
-              {name}
-            </a>
-            <ArrowUpRight className="w-3.5 h-3.5 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-          </CardTitle>
-          <div className="text-sm text-gray-500 truncate">
-            {owner}
+    <motion.div 
+      className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden h-full transition-all duration-300 hover:shadow-md hover:border-primary/20"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div className="relative">
+        {/* Gradient overlay for the header */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-secondary/10 opacity-70"></div>
+        
+        {/* Repository owner avatar */}
+        <div className="flex items-center p-4 relative">
+          <div className="flex-shrink-0 mr-3">
+            <img 
+              src={agent.avatar || 'https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png'} 
+              alt={`${agent.owner}'s avatar`} 
+              className="w-10 h-10 rounded-full border-2 border-white shadow-sm"
+            />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {agent.owner}
+            </p>
+            <p className="text-xs text-gray-500 flex items-center">
+              <Clock className="w-3 h-3 mr-1" />
+              {formattedDate}
+            </p>
           </div>
         </div>
-      </CardHeader>
+      </div>
       
-      <CardContent className="py-3 flex-grow">
-        <p className="text-sm text-gray-700 line-clamp-3">{description}</p>
+      <div className="p-4 pt-2">
+        <h3 className="text-lg font-semibold text-gray-900 mb-1 hover:text-primary transition-colors">
+          <a href={agent.url} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-start">
+            <span className="truncate">{agent.name}</span>
+            <ExternalLink className="w-4 h-4 ml-1 flex-shrink-0 opacity-70" />
+          </a>
+        </h3>
         
-        <div className="flex flex-wrap gap-1.5 mt-4">
-          {language && (
-            <Badge variant="outline" className="text-xs bg-secondary text-primary px-2.5 py-0.5 rounded-full font-medium">
-              {language}
-            </Badge>
-          )}
-          
-          {topics.slice(0, 3).map(topic => (
-            <Badge key={topic} variant="outline" className="text-xs bg-gray-100 hover:bg-gray-200 transition-colors px-2.5 py-0.5 rounded-full">
+        <p className="text-sm text-gray-600 mb-3 line-clamp-3 h-[4.5rem]">
+          {truncatedDescription}
+        </p>
+        
+        <div className="flex flex-wrap gap-1 mb-3">
+          {agent.topics.slice(0, 3).map((topic, index) => (
+            <Badge 
+              key={`${topic}-${index}`} 
+              variant="secondary" 
+              className="text-xs py-0 px-2 bg-secondary/30 text-primary hover:bg-secondary"
+            >
+              <Tag className="w-3 h-3 mr-1" />
               {topic}
             </Badge>
           ))}
-          
-          {topics.length > 3 && (
-            <Badge variant="outline" className="text-xs bg-gray-100 hover:bg-gray-200 transition-colors px-2.5 py-0.5 rounded-full">
-              +{topics.length - 3}
+          {agent.topics.length > 3 && (
+            <Badge 
+              variant="outline" 
+              className="text-xs py-0 px-2 text-gray-500 border-gray-200"
+            >
+              +{agent.topics.length - 3}
             </Badge>
           )}
         </div>
-      </CardContent>
-      
-      <CardFooter className="pt-0 pb-4 flex flex-col gap-3">
-        <div className="flex items-center justify-between w-full text-xs text-gray-500">
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1">
-              <StarIcon className="w-3.5 h-3.5 text-yellow-500" />
-              {formatNumber(stars)}
-            </span>
-            <span className="flex items-center gap-1">
-              <GitForkIcon className="w-3.5 h-3.5 text-blue-500" />
-              {formatNumber(forks)}
-            </span>
+        
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center text-amber-500">
+              <Star className="w-4 h-4 mr-1" />
+              <span className="text-sm font-medium">{agent.stars.toLocaleString()}</span>
+            </div>
+            
+            <div className="flex items-center text-blue-500">
+              <GitFork className="w-4 h-4 mr-1" />
+              <span className="text-sm font-medium">{agent.forks.toLocaleString()}</span>
+            </div>
           </div>
-          <span className="flex items-center gap-1 text-xs font-medium bg-gray-100 px-2 py-0.5 rounded-full">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            {license || "No License"}
-          </span>
+          
+          {agent.language && (
+            <div className="flex items-center">
+              <span 
+                className="w-3 h-3 rounded-full mr-1"
+                style={{ backgroundColor: languageColor }}
+              ></span>
+              <span className="text-xs text-gray-600">{agent.language}</span>
+            </div>
+          )}
         </div>
         
-        <AgentIntegrationButtons repoUrl={url} projectName={name} />
-      </CardFooter>
-    </Card>
+        <AgentIntegrationButtons repoUrl={agent.url} projectName={agent.name} />
+        
+        <div className={`mt-3 pt-3 border-t border-gray-100 transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+          <a 
+            href={agent.url} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center justify-center w-full text-xs text-gray-600 hover:text-primary transition-colors"
+          >
+            <Button variant="ghost" size="sm" className="w-full text-xs">
+              <Heart className="w-3 h-3 mr-1" />
+              View Project
+            </Button>
+          </a>
+        </div>
+      </div>
+    </motion.div>
   );
+};
+
+const getLanguageColor = (language: string): string => {
+  const colors: Record<string, string> = {
+    'JavaScript': '#f1e05a',
+    'TypeScript': '#2b7489',
+    'Python': '#3572A5',
+    'Java': '#b07219',
+    'Go': '#00ADD8',
+    'Rust': '#dea584',
+    'C++': '#f34b7d',
+    'C#': '#178600',
+    'PHP': '#4F5D95',
+    'Ruby': '#701516',
+    'Swift': '#ffac45',
+    'Kotlin': '#F18E33',
+    'Dart': '#00B4AB',
+  };
+  
+  return colors[language] || '#6e7781';
 };
 
 export default AgentCard;

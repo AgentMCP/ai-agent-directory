@@ -110,6 +110,7 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
       try {
         let result = [...agents];
         
+        // Apply search if query exists
         if (filterOptions.searchQuery && filterOptions.searchQuery.trim() !== '') {
           const searchQuery = filterOptions.searchQuery.trim().toLowerCase();
           const searchTerms = searchQuery.split(/\s+/).filter(term => term.length > 0);
@@ -122,7 +123,7 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
               const description = agent.description.toLowerCase();
               const topics = agent.topics.map(topic => topic.toLowerCase());
               
-              return searchTerms.every(term => 
+              return searchTerms.some(term => 
                 name.includes(term) || 
                 description.includes(term) || 
                 topics.some(topic => topic.includes(term))
@@ -131,13 +132,19 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
             
             console.log(`Found ${result.length} results for "${searchQuery}"`);
           }
+        } else {
+          // If search is cleared, reset to show all agents
+          console.log("Search cleared, showing all agents");
+          result = [...agents];
         }
         
+        // Apply language filter if selected
         if (filterOptions.language) {
           result = result.filter(agent => agent.language === filterOptions.language);
           console.log(`After language filter "${filterOptions.language}": ${result.length} results`);
         }
         
+        // Sort the results
         result = sortAgents(result, filterOptions.sort);
         console.log(`After sorting by "${filterOptions.sort}": ${result.length} results`);
         
