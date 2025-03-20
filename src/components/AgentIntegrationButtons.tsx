@@ -129,14 +129,6 @@ const AgentIntegrationButtons = ({ repoUrl, projectName }: AgentIntegrationButto
           >
             <PlusIcon className="w-3 h-3" /> Windsurf AI
           </Button>
-          <Button 
-            size="sm" 
-            variant="outline" 
-            className="text-xs py-1 h-8 rounded-full border-gray-200 hover:border-primary hover:text-primary transition-colors flex items-center gap-1"
-            onClick={() => handleIntegration('Framer')}
-          >
-            <PlusIcon className="w-3 h-3" /> Framer
-          </Button>
         </div>
       )}
     </div>

@@ -1,5 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
-import { Search, X, RefreshCw, Plus } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, X, RefreshCw, Plus, ArrowRight, Loader2 } from 'lucide-react';
+import { GitHubService } from '../services/GitHubService';
+import { Agent } from '../types';
+import { debounce } from 'lodash';
 
 interface SearchBarProps {
   defaultValue?: string;
@@ -24,7 +27,18 @@ const SearchBar = ({
   const [searchTerms, setSearchTerms] = useState<string[]>([]);
   const [isFocused, setIsFocused] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  // Common search terms for AI agents
+  const commonSearchTerms = [
+    'autonomous agent', 'llm agent', 'ai assistant', 
+    'agent framework', 'mcp', 'model context protocol',
+    'multi-agent', 'agent orchestration'
+  ];
 
   useEffect(() => {
     setQuery(defaultValue);
@@ -33,20 +47,67 @@ const SearchBar = ({
     }
   }, [defaultValue]);
 
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node) && 
+          inputRef.current && !inputRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Debounced search suggestion function
+  const debouncedGetSuggestions = useCallback(
+    debounce((searchText: string) => {
+      if (searchText.length < 2) {
+        setSuggestions([]);
+        return;
+      }
+
+      const matchedSuggestions = commonSearchTerms
+        .filter(term => term.toLowerCase().includes(searchText.toLowerCase()))
+        .slice(0, 5);
+      
+      setSuggestions(matchedSuggestions);
+    }, 300),
+    []
+  );
+
+  useEffect(() => {
+    debouncedGetSuggestions(query);
+  }, [query, debouncedGetSuggestions]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSearching(true);
     const terms = query.split(' ').filter(term => term.trim() !== '');
     setSearchTerms(terms);
     onSearch(query);
-    if (inputRef.current) {
-      inputRef.current.blur();
-    }
+    setShowSuggestions(false);
+    
+    // Simulate a brief loading state for better UX
+    setTimeout(() => {
+      setIsSearching(false);
+      if (inputRef.current) {
+        inputRef.current.blur();
+      }
+    }, 500);
   };
 
   const clearSearch = () => {
     setQuery('');
     setSearchTerms([]);
+    setSuggestions([]);
     onSearch('');
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
   };
   
   const handleRefresh = () => {
@@ -69,6 +130,19 @@ const SearchBar = ({
     onSearch(newQuery);
   };
 
+  const handleSuggestionClick = (suggestion: string) => {
+    setQuery(suggestion);
+    setSearchTerms([suggestion]);
+    onSearch(suggestion);
+    setShowSuggestions(false);
+    setIsSearching(true);
+    
+    // Simulate a brief loading state for better UX
+    setTimeout(() => {
+      setIsSearching(false);
+    }, 500);
+  };
+
   return (
     <div 
       className={`w-full transition-all duration-300 ${
@@ -83,7 +157,11 @@ const SearchBar = ({
       >
         <div className="relative">
           <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-            <Search className={`h-4 w-4 transition-colors ${isFocused ? 'text-primary' : 'text-gray-400'}`} />
+            {isSearching ? (
+              <Loader2 className="h-4 w-4 text-primary animate-spin" />
+            ) : (
+              <Search className={`h-4 w-4 transition-colors ${isFocused ? 'text-primary' : 'text-gray-400'}`} />
+            )}
           </div>
           <input
             ref={inputRef}
@@ -96,7 +174,10 @@ const SearchBar = ({
             placeholder="Search AI agents, libraries, or tools..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => setIsFocused(true)}
+            onFocus={() => {
+              setIsFocused(true);
+              setShowSuggestions(true);
+            }}
             onBlur={() => setIsFocused(false)}
           />
           {query && (
@@ -130,11 +211,34 @@ const SearchBar = ({
           )}
           <button
             type="submit"
-            className={`absolute inset-y-0 right-0 flex items-center px-6 text-white bg-primary rounded-r-full hover:opacity-90 transition-colors ${isCompact ? 'text-sm' : ''}`}
+            className={`absolute inset-y-0 right-0 flex items-center px-6 text-white bg-primary rounded-r-full hover:opacity-90 transition-colors ${isCompact ? 'text-sm' : ''} ${isSearching ? 'opacity-80' : ''}`}
+            disabled={isSearching}
           >
-            Search
+            {isSearching ? 'Searching...' : 'Search'}
           </button>
         </div>
+        
+        {/* Search suggestions dropdown */}
+        {showSuggestions && suggestions.length > 0 && (
+          <div 
+            ref={suggestionsRef}
+            className="absolute z-50 mt-1 w-full bg-white rounded-lg shadow-lg border border-gray-200 py-1 max-h-60 overflow-y-auto"
+          >
+            {suggestions.map((suggestion, index) => (
+              <div 
+                key={`${suggestion}-${index}`}
+                className="px-4 py-2 hover:bg-gray-50 cursor-pointer flex items-center justify-between"
+                onClick={() => handleSuggestionClick(suggestion)}
+              >
+                <div className="flex items-center">
+                  <Search className="h-3 w-3 text-gray-400 mr-2" />
+                  <span>{suggestion}</span>
+                </div>
+                <ArrowRight className="h-3 w-3 text-gray-400" />
+              </div>
+            ))}
+          </div>
+        )}
         
         {/* Search term bubbles */}
         {searchTerms.length > 0 && (

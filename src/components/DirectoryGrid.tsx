@@ -94,38 +94,48 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
     const applyFilters = async () => {
       let result = [...agents];
       
+      // Apply search if query exists
+      if (filterOptions.searchQuery && filterOptions.searchQuery.trim() !== '') {
+        setIsLoading(true);
+        try {
+          // Use the improved searchAgents method from GitHubService
+          result = await GitHubService.searchAgents(filterOptions.searchQuery);
+        } catch (error) {
+          console.error('Error searching agents:', error);
+          toast({
+            title: "Error",
+            description: "Search failed. Please try again.",
+            variant: "destructive",
+          });
+          // If search fails, use the current agents but filter them client-side
+          const normalizedQuery = filterOptions.searchQuery.toLowerCase().trim();
+          const searchTerms = normalizedQuery.split(/\s+/).filter(term => term.length > 0);
+          
+          result = agents.filter(agent => {
+            const name = agent.name.toLowerCase();
+            const description = agent.description.toLowerCase();
+            const topics = agent.topics.map(t => t.toLowerCase());
+            
+            return searchTerms.some(term => 
+              name.includes(term) || 
+              description.includes(term) || 
+              topics.some(topic => topic.includes(term))
+            );
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      }
+      
+      // Then apply language filter if selected
       if (filterOptions.language) {
         result = result.filter(agent => agent.language === filterOptions.language);
       }
       
+      // Finally sort the results
       result = sortAgents(result, filterOptions.sort);
       
-      if (filterOptions.searchQuery) {
-        if (filterOptions.searchQuery.trim() !== '') {
-          setIsLoading(true);
-          try {
-            result = await GitHubService.searchAgents(filterOptions.searchQuery);
-            
-            if (filterOptions.language) {
-              result = result.filter(agent => agent.language === filterOptions.language);
-            }
-            
-            result = sortAgents(result, filterOptions.sort);
-          } catch (error) {
-            console.error('Error searching agents:', error);
-            toast({
-              title: "Error",
-              description: "Search failed. Please try again.",
-              variant: "destructive",
-            });
-          } finally {
-            setIsLoading(false);
-          }
-        }
-      }
-      
       setFilteredAgents(result);
-      
       setPage(1);
     };
     

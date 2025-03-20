@@ -298,21 +298,91 @@ class GitHubService {
     return new Promise((resolve) => {
       setTimeout(() => {
         const normalizedQuery = query.toLowerCase().trim();
+        
+        // If query is empty, return all agents
+        if (!normalizedQuery) {
+          resolve(getAllProjects().filter(agent => 
+            !this.containsNonEnglishCharacters(agent.name) && 
+            !this.containsNonEnglishCharacters(agent.description)
+          ));
+          return;
+        }
+        
+        // Split the query into individual terms for better matching
+        const searchTerms = normalizedQuery.split(/\s+/).filter(term => term.length > 0);
+        
+        // Filter agents based on search terms
         const results = getAllProjects().filter(agent => {
           // First check if the repository is in English
-          if (this.containsNonEnglishCharacters(agent.name) || this.containsNonEnglishCharacters(agent.description)) {
+          if (this.containsNonEnglishCharacters(agent.name) || 
+              this.containsNonEnglishCharacters(agent.description)) {
             return false;
           }
           
-          // Then check if it matches the search query
-          const inName = agent.name.toLowerCase().includes(normalizedQuery);
-          const inDescription = agent.description.toLowerCase().includes(normalizedQuery);
-          const inTopics = agent.topics.some(topic => topic.toLowerCase().includes(normalizedQuery));
-          return inName || inDescription || inTopics;
+          // Convert agent data to lowercase for case-insensitive matching
+          const name = agent.name.toLowerCase();
+          const description = agent.description.toLowerCase();
+          const topics = agent.topics.map(t => t.toLowerCase());
+          
+          // Check if any search term matches any field
+          // For multi-term queries, require at least one match for each term
+          return searchTerms.every(term => 
+            name.includes(term) || 
+            description.includes(term) || 
+            topics.some(topic => topic.includes(term))
+          );
         });
-        resolve(results);
+        
+        // Sort results by relevance (number of term matches)
+        const sortedResults = results.sort((a, b) => {
+          const aRelevance = this.calculateRelevance(a, searchTerms);
+          const bRelevance = this.calculateRelevance(b, searchTerms);
+          return bRelevance - aRelevance;
+        });
+        
+        // Log the search results for debugging
+        console.log(`Search for "${query}" found ${sortedResults.length} results`);
+        
+        resolve(sortedResults);
       }, 300);
     });
+  }
+  
+  // Helper method to calculate search relevance score
+  private static calculateRelevance(agent: Agent, searchTerms: string[]): number {
+    const name = agent.name.toLowerCase();
+    const description = agent.description.toLowerCase();
+    const topics = agent.topics.map(t => t.toLowerCase());
+    
+    let score = 0;
+    
+    // Check each search term
+    for (const term of searchTerms) {
+      // Name matches are most important
+      if (name.includes(term)) {
+        score += 10;
+        // Exact name match or starts with term gets bonus points
+        if (name === term || name.startsWith(term + ' ')) {
+          score += 15;
+        }
+      }
+      
+      // Description matches
+      if (description.includes(term)) {
+        score += 5;
+      }
+      
+      // Topic matches
+      if (topics.some(topic => topic.includes(term))) {
+        score += 8;
+      }
+      
+      // Stars and forks add to relevance
+      score += Math.min(agent.stars / 100, 10); // Cap at 10 points
+      score += Math.min(agent.forks / 20, 5);   // Cap at 5 points
+    }
+    
+    return score;
   }
 
   static getLastUpdatedTimestamp(): string {
