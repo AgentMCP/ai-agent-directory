@@ -93,8 +93,11 @@ const ScrapeService = {
           const mainResults = await this.searchGitHub(query);
           
           for (const repo of mainResults) {
-            if (!uniqueRepos.has(repo.url)) {
-              uniqueRepos.set(repo.url, repo);
+            // Extra check to ensure only English content is included
+            if (this.isEnglishContent(repo.name) && this.isEnglishContent(repo.description)) {
+              if (!uniqueRepos.has(repo.url)) {
+                uniqueRepos.set(repo.url, repo);
+              }
             }
           }
           
@@ -109,8 +112,11 @@ const ScrapeService = {
               const results = await this.searchGitHub(term);
               
               for (const repo of results) {
-                if (!uniqueRepos.has(repo.url) && uniqueRepos.size < maxResults) {
-                  uniqueRepos.set(repo.url, repo);
+                // Extra check to ensure only English content is included
+                if (this.isEnglishContent(repo.name) && this.isEnglishContent(repo.description)) {
+                  if (!uniqueRepos.has(repo.url) && uniqueRepos.size < maxResults) {
+                    uniqueRepos.set(repo.url, repo);
+                  }
                 }
               }
             }
@@ -214,7 +220,7 @@ const ScrapeService = {
         // Add language filter to the query to prioritize English content
         // language:en will filter for repositories with English as the primary language
         // We'll also exclude repositories with certain languages to avoid non-English content
-        const apiUrl = `https://api.github.com/search/repositories?q=${queryString}+in:name,description,readme+language:en+-language:zh+-language:ru+-language:ko+-language:ja&sort=stars&order=desc&per_page=100`;
+        const apiUrl = `https://api.github.com/search/repositories?q=${queryString}+in:name,description,readme+language:en+-language:zh+-language:zh-cn+-language:zh-tw+-language:ru+-language:ko+-language:ja+-language:ar&sort=stars&order=desc&per_page=100`;
         
         // First check if the fetch will succeed (CORS check)
         try {
@@ -519,15 +525,22 @@ const ScrapeService = {
       /[\u0900-\u097F]/   // Devanagari
     ];
     
-    // Check if text contains significant non-English characters
+    // Check if text contains ANY non-English characters - stricter filtering
     for (const pattern of nonEnglishPatterns) {
       if (pattern.test(text)) {
-        // If more than a few characters match non-English patterns, consider it non-English
-        const matches = text.match(pattern);
-        if (matches && matches.length > 2) {
-          return false;
-        }
+        // If ANY non-English characters are found, reject the content
+        return false;
       }
+    }
+    
+    // Additional check for repositories with mixed language content
+    // Check if the text has a high ratio of non-ASCII characters
+    const nonAsciiCount = (text.match(/[^\x00-\x7F]/g) || []).length;
+    const textLength = text.length;
+    
+    // If more than 10% of characters are non-ASCII, consider it non-English
+    if (textLength > 0 && nonAsciiCount / textLength > 0.1) {
+      return false;
     }
     
     return true;

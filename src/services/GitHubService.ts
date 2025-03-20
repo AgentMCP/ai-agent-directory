@@ -283,7 +283,13 @@ class GitHubService {
   static fetchAgents(): Promise<Agent[]> {
     return new Promise((resolve) => {
       setTimeout(() => {
-        resolve(getAllProjects());
+        // Get all projects and filter out non-English ones
+        const allProjects = getAllProjects();
+        const englishProjects = allProjects.filter(agent => 
+          !this.containsNonEnglishCharacters(agent.name) && 
+          !this.containsNonEnglishCharacters(agent.description)
+        );
+        resolve(englishProjects);
       }, 500);
     });
   }
@@ -293,6 +299,12 @@ class GitHubService {
       setTimeout(() => {
         const normalizedQuery = query.toLowerCase().trim();
         const results = getAllProjects().filter(agent => {
+          // First check if the repository is in English
+          if (this.containsNonEnglishCharacters(agent.name) || this.containsNonEnglishCharacters(agent.description)) {
+            return false;
+          }
+          
+          // Then check if it matches the search query
           const inName = agent.name.toLowerCase().includes(normalizedQuery);
           const inDescription = agent.description.toLowerCase().includes(normalizedQuery);
           const inTopics = agent.topics.some(topic => topic.toLowerCase().includes(normalizedQuery));
@@ -408,15 +420,22 @@ class GitHubService {
       /[\u0900-\u097F]/   // Devanagari
     ];
     
-    // Check if text contains significant non-English characters
+    // Check if text contains ANY non-English characters - stricter filtering
     for (const pattern of nonEnglishPatterns) {
       if (pattern.test(text)) {
-        // If more than a few characters match non-English patterns, consider it non-English
-        const matches = text.match(pattern);
-        if (matches && matches.length > 2) {
-          return true;
-        }
+        // If ANY non-English characters are found, consider it non-English
+        return true;
       }
+    }
+    
+    // Additional check for repositories with mixed language content
+    // Check if the text has a high ratio of non-ASCII characters
+    const nonAsciiCount = (text.match(/[^\x00-\x7F]/g) || []).length;
+    const textLength = text.length;
+    
+    // If more than 10% of characters are non-ASCII, consider it non-English
+    if (textLength > 0 && nonAsciiCount / textLength > 0.1) {
+      return true;
     }
     
     return false;
