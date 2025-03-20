@@ -46,6 +46,8 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
   const [manualUrl, setManualUrl] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
   const [searchQuery, setSearchQuery] = useState('AI Agent MCP');
+  const [showFeedbackForm, setShowFeedbackForm] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState('');
 
   useEffect(() => {
     // Check if we've done an import before
@@ -315,6 +317,8 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
     setStatus('');
     setShowSatisfactionQuery(false);
     setShowManualInput(false);
+    setShowFeedbackForm(false);
+    setFeedbackMessage('');
   };
 
   const handleModalClose = (open: boolean) => {
@@ -385,9 +389,71 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
                 </Button>
                 <Button 
                   variant="outline" 
-                  onClick={() => setShowManualInput(true)}
+                  onClick={() => setShowFeedbackForm(true)}
                 >
-                  No, add manually
+                  No, provide feedback
+                </Button>
+              </div>
+            </div>
+          ) : showFeedbackForm ? (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-2">
+                <label htmlFor="feedbackMessage" className="text-sm font-medium">
+                  What issues did you encounter? This will be sent to the GitHub repository.
+                </label>
+                <textarea
+                  id="feedbackMessage"
+                  placeholder="Please describe what was wrong with the import results..."
+                  value={feedbackMessage}
+                  onChange={e => setFeedbackMessage(e.target.value)}
+                  className="w-full min-h-[100px] p-2 border rounded-md"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 p-2 bg-blue-50 text-blue-700 rounded">
+                <AlertCircle className="h-4 w-4" />
+                <p className="text-xs">
+                  Your feedback will be sent to the GitHub repository as an issue to help improve the project.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <Button 
+                  variant="default" 
+                  onClick={() => {
+                    // Send feedback to GitHub
+                    if (feedbackMessage.trim()) {
+                      // Create a GitHub issue URL with the feedback pre-filled
+                      const issueUrl = `https://github.com/AgentMCP/ai-agent-directory/issues/new?title=Bulk Import Feedback&body=${encodeURIComponent(feedbackMessage)}`;
+                      window.open(issueUrl, '_blank');
+                      
+                      toast({
+                        title: "Feedback Sent",
+                        description: "Thank you for your feedback. You've been redirected to GitHub to submit your issue."
+                      });
+                      
+                      setFeedbackMessage('');
+                      setShowFeedbackForm(false);
+                      setShowManualInput(true); // Show manual input after feedback
+                    } else {
+                      toast({
+                        title: "Empty Feedback",
+                        description: "Please provide some feedback before submitting.",
+                        variant: "destructive"
+                      });
+                    }
+                  }}
+                >
+                  Submit Feedback
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setShowFeedbackForm(false);
+                    setShowManualInput(true); // Skip feedback and go to manual input
+                  }}
+                >
+                  Skip & Add Manually
                 </Button>
               </div>
             </div>

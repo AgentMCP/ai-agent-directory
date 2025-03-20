@@ -66,9 +66,13 @@ const AgentIntegrationButtons = ({ repoUrl, projectName }: AgentIntegrationButto
       description: `${projectName} has been successfully imported to ${platform}`,
     });
     
-    // Open Framer website if the platform is Framer
+    // Open the respective website based on the platform
     if (platform === 'Framer') {
       window.open('https://www.framer.com', '_blank');
+    } else if (platform === 'Cursor AI') {
+      window.open('https://cursor.sh', '_blank');
+    } else if (platform === 'Windsurf AI') {
+      window.open('https://windsurf.io', '_blank');
     }
     
     // Reset after showing completion
