@@ -7,7 +7,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from './ui/dialog';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -22,17 +21,17 @@ import { saveUserSearch } from '../services/firebase';
 import { motion } from 'framer-motion';
 
 interface BulkImportModalProps {
-  onProjectsAdded?: (urls: string[]) => void;
+  onProjectsAdded?: (count: number) => void;
   existingProjectUrls?: string[];
-  onCancel?: () => void;
+  onClose?: () => void;
+  isOpen?: boolean;
 }
 
-const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onCancel }: BulkImportModalProps) => {
+const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, isOpen }: BulkImportModalProps) => {
   const { toast } = useToast();
   const { currentUser } = useAuth();
   
   // State management
-  const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [githubToken, setGithubToken] = useState('');
   const [status, setStatus] = useState('');
@@ -76,7 +75,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onCancel }
           
           // If onProjectsAdded callback is provided, call it with reimported repos
           if (onProjectsAdded) {
-            onProjectsAdded(repos);
+            onProjectsAdded(repos.length);
           }
           
           // Clear the reimport data
@@ -183,7 +182,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onCancel }
 
       // If onProjectsAdded callback is provided, call it
       if (onProjectsAdded && newRepositories.length > 0) {
-        onProjectsAdded(newRepositories.map(repo => repo.url));
+        onProjectsAdded(newRepositories.length);
       }
 
       // Save search to user's account if logged in
@@ -237,7 +236,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onCancel }
 
           // If onProjectsAdded callback is provided, call it with fallback repos
           if (onProjectsAdded) {
-            onProjectsAdded(newFallbackRepos.map(repo => repo.url));
+            onProjectsAdded(newFallbackRepos.length);
           }
 
           toast({
@@ -285,7 +284,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onCancel }
         setImportedProjects([manualUrl]);
 
         if (onProjectsAdded) {
-          onProjectsAdded([manualUrl]);
+          onProjectsAdded(1);
         }
 
         toast({
@@ -326,25 +325,14 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onCancel }
   const handleModalClose = (open: boolean) => {
     if (!open) {
       resetState();
-      if (onCancel) {
-        onCancel();
+      if (onClose) {
+        onClose();
       }
     }
-    setIsOpen(open);
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={handleModalClose}>
-      <DialogTrigger asChild>
-        <Button 
-          id="bulkImportTrigger"
-          variant="outline" 
-          className="flex items-center gap-2 bg-white/5 border-white/10 text-white hover:bg-white/10 hover:border-indigo-500/30"
-        >
-          <Plus className="w-4 h-4" />
-          Add in Bulk
-        </Button>
-      </DialogTrigger>
       <DialogContent className="sm:max-w-[600px] bg-[#1a1f36] border-white/10 text-white">
         <DialogHeader>
           <DialogTitle className="text-white flex items-center gap-2">
@@ -393,7 +381,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onCancel }
                 <Button 
                   variant="default" 
                   onClick={() => {
-                    setIsOpen(false);
+                    handleModalClose(false);
                     resetState();
                   }}
                   className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none"
@@ -430,7 +418,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onCancel }
                       title: 'Feedback Submitted',
                       description: 'Thank you for your feedback!',
                     });
-                    setIsOpen(false);
+                    handleModalClose(false);
                     resetState();
                   }}
                   className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none"
@@ -455,9 +443,9 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onCancel }
                   size="sm" 
                   onClick={() => {
                     if (onProjectsAdded) {
-                      onProjectsAdded(searchResults);
+                      onProjectsAdded(searchResults.length);
                     }
-                    setIsOpen(false);
+                    handleModalClose(false);
                     resetState();
                   }}
                   className="text-xs border-white/10 bg-white/5 text-white hover:bg-white/10"

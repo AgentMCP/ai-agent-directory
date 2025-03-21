@@ -18,6 +18,7 @@ interface AddProjectFormProps {
   onCancel?: () => void;
   onClose?: () => void;
   showButton?: boolean;
+  isOpen?: boolean;
 }
 
 const formSchema = z.object({
@@ -28,8 +29,7 @@ const formSchema = z.object({
     }),
 });
 
-const AddProjectForm = ({ onProjectAdded, onCancel, onClose, showButton = true }: AddProjectFormProps) => {
-  const [isOpen, setIsOpen] = useState(false);
+const AddProjectForm = ({ onProjectAdded, onCancel, onClose, showButton = true, isOpen }: AddProjectFormProps) => {
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -52,7 +52,6 @@ const AddProjectForm = ({ onProjectAdded, onCancel, onClose, showButton = true }
           description: "Project added to the directory successfully",
         });
         
-        setIsOpen(false);
         form.reset();
       }
     } catch (error) {
@@ -71,8 +70,6 @@ const AddProjectForm = ({ onProjectAdded, onCancel, onClose, showButton = true }
     form.reset();
     if (onCancel) {
       onCancel();
-    } else {
-      setIsOpen(false);
     }
   };
 
@@ -136,41 +133,24 @@ const AddProjectForm = ({ onProjectAdded, onCancel, onClose, showButton = true }
   }
 
   return (
-    <>
-      <motion.div
-        whileHover={{ scale: 1.05 }}
-        transition={{ type: "spring", stiffness: 400, damping: 10 }}
-      >
-        <Button 
-          onClick={() => setIsOpen(true)} 
-          variant="outline" 
-          size="lg"
-          className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none shadow-md flex items-center gap-2"
-        >
-          <Plus className="h-4 w-4" /> Add Project
-        </Button>
-      </motion.div>
-      
-      <Dialog open={isOpen} onOpenChange={(open) => {
-        if (!open && onClose) {
-          onClose();
-        }
-        setIsOpen(open);
-      }}>
-        <DialogContent className="bg-[#1a1f36] border-white/10 text-white">
-          <DialogHeader>
-            <DialogTitle className="text-white flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-indigo-400" />
-              Add AI Agent Project
-            </DialogTitle>
-            <DialogDescription className="text-white/70">
-              Add a GitHub repository to the AI Agent Directory.
-            </DialogDescription>
-          </DialogHeader>
-          {formContent}
-        </DialogContent>
-      </Dialog>
-    </>
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      if (!open && onClose) {
+        onClose();
+      }
+    }}>
+      <DialogContent className="bg-[#1a1f36] border-white/10 text-white">
+        <DialogHeader>
+          <DialogTitle className="text-white flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-indigo-400" />
+            Add AI Agent Project
+          </DialogTitle>
+          <DialogDescription className="text-white/70">
+            Add a GitHub repository to the AI Agent Directory.
+          </DialogDescription>
+        </DialogHeader>
+        {formContent}
+      </DialogContent>
+    </Dialog>
   );
 };
 

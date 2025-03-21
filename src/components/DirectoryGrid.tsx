@@ -4,6 +4,7 @@ import { Agent, FilterOptions, SortOption } from '../types';
 import Filters from './Filters';
 import { GitHubService } from '../services/GitHubService';
 import { Button } from './ui/button';
+import { Badge } from './ui/badge';
 import { 
   Select,
   SelectContent,
@@ -240,25 +241,86 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      const response = await GitHubService.refreshAgentData();
+      // Clear cache to force a fresh load
+      if (typeof window !== 'undefined' && window.__AGENT_CACHE__) {
+        window.__AGENT_CACHE__.agents = null;
+      }
       
-      // Fixed: Correctly extract the agents array from the response object
-      setAgents(response.agents);
+      // Get fresh data
+      const data = await GitHubService.refreshAgentData();
+      setAgents(data.agents);
+      applyFilters(data.agents, filterOptions);
       
       toast({
-        title: "Success",
-        description: "AI agent directory has been refreshed with the latest data.",
+        title: "Refresh Complete",
+        description: `Successfully refreshed ${data.agents.length} projects.`,
+        variant: "default",
       });
     } catch (error) {
-      console.error('Error refreshing agents:', error);
+      console.error('Error refreshing data:', error);
       toast({
-        title: "Error",
-        description: "Failed to refresh AI agents. Please try again later.",
+        title: "Refresh Failed",
+        description: "Unable to refresh data. Please try again later.",
         variant: "destructive",
       });
     } finally {
       setIsRefreshing(false);
     }
+  };
+
+  const applyFilters = (agents: Agent[], filterOptions: FilterOptions) => {
+    let filtered = [...agents];
+    
+    // Apply search filter first
+    if (filterOptions.searchQuery && filterOptions.searchQuery.trim() !== '') {
+      console.log("Applying search filter:", filterOptions.searchQuery);
+      
+      const searchQuery = filterOptions.searchQuery.toLowerCase().trim();
+      
+      filtered = filtered.filter(agent => {
+        if (!agent || agent.isLoading) return false;
+        
+        const nameMatch = agent.name?.toLowerCase().includes(searchQuery);
+        const descMatch = agent.description?.toLowerCase().includes(searchQuery);
+        const langMatch = agent.language?.toLowerCase().includes(searchQuery);
+        const licenseMatch = agent.license?.toLowerCase().includes(searchQuery);
+        
+        return nameMatch || descMatch || langMatch || licenseMatch;
+      });
+      
+      console.log(`Search filter applied, ${filtered.length} agents remaining`);
+    } else {
+      console.log("No search query to filter by");
+    }
+    
+    // Then apply language filter
+    if (filterOptions.language) {
+      console.log("Applying language filter:", filterOptions.language);
+      
+      filtered = filtered.filter(agent => 
+        agent.language === filterOptions.language
+      );
+      
+      console.log(`Language filter applied, ${filtered.length} agents remaining`);
+    }
+    
+    // Then apply license filter
+    if (filterOptions.license) {
+      console.log("Applying license filter:", filterOptions.license);
+      
+      filtered = filtered.filter(agent => 
+        agent.license === filterOptions.license
+      );
+      
+      console.log(`License filter applied, ${filtered.length} agents remaining`);
+    }
+    
+    // Finally sort
+    console.log("Applying sort:", filterOptions.sort);
+    filtered = sortAgents(filtered, filterOptions.sort);
+    
+    console.log(`Final filtered result: ${filtered.length} agents`);
+    setFilteredAgents(filtered);
   };
 
   // Handle adding a project
@@ -299,42 +361,17 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
   };
 
   // Handle adding multiple projects
-  const handleBulkProjectsAdded = async (urls: string[]) => {
-    try {
-      const addedAgents = await GitHubService.addProjects(urls);
-      
-      if (addedAgents && addedAgents.length > 0) {
-        setAgents(prevAgents => {
-          // Filter out any agents that already exist
-          const newAgents = addedAgents.filter(newAgent => 
-            !prevAgents.some(agent => agent.url === newAgent.url)
-          );
-          
-          if (newAgents.length === 0) {
-            toast({
-              title: "No new projects",
-              description: "All projects are already in the directory.",
-            });
-            return prevAgents;
-          }
-          
-          // Add the new agents
-          const updated = [...newAgents, ...prevAgents];
-          return updated;
-        });
-        
-        toast({
-          title: "Success",
-          description: `${addedAgents.length} projects added successfully!`,
-        });
-      }
-    } catch (error) {
-      console.error('Error adding projects:', error);
+  const handleBulkProjectsAdded = (count: number) => {
+    // Update the UI after bulk projects are added
+    if (count > 0) {
       toast({
-        title: "Error",
-        description: "Failed to add projects. Please try again.",
-        variant: "destructive",
+        title: "Success!",
+        description: `Added ${count} new projects to the directory.`,
+        variant: "default",
       });
+      
+      // Refresh the data
+      handleRefresh();
     }
   };
 
@@ -344,12 +381,13 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
   }, [agents]);
 
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
+  const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
 
   return (
     <div id="directory" ref={directoryRef} className="py-6 px-4 bg-gradient-to-b from-[#0e1129] to-[#1e2344]">
       <div className="max-w-5xl mx-auto">
         {/* Directory header with title and buttons */}
-        <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 border-b border-white/10 pb-2 gap-2">
           <div className="flex items-center gap-1.5">
             <Database className="h-3.5 w-3.5 text-indigo-400" />
             <h3 className="text-sm font-bold text-white">AI Agent Directory</h3>
@@ -357,32 +395,63 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
               {filteredAgents.length > 0 ? (
                 <>Showing <span className="font-semibold text-indigo-400">{filteredAgents.length}</span> of <span className="font-semibold text-indigo-400">{agents.length}</span> total projects</>
               ) : isLoading ? (
-                "Loading projects..."
+                <span className="text-indigo-400">Loading...</span>
               ) : (
-                "No projects found"
+                <span className="text-red-400">No projects found</span>
               )}
             </span>
           </div>
           
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsAddProjectModalOpen(true)}
-              className="text-xs border border-indigo-500 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-medium h-7 px-3 rounded-sm"
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Add Project
-            </Button>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => document.getElementById('bulkImportButton')?.click()}
-              className="text-xs border border-indigo-500 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 font-medium h-7 px-3 rounded-sm"
-            >
-              Add in Bulk
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="w-full md:w-auto flex gap-2">
+              <Select 
+                value={filterOptions.sort} 
+                onValueChange={(value: SortOption) => handleSortChange(value)}
+              >
+                <SelectTrigger className="h-7 text-xs bg-[#0e1129] border-white/10 text-white w-[120px] md:w-[140px]">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#1a1f36] border-white/10 text-white">
+                  <SelectItem value="stars" className="text-xs">Most Stars</SelectItem>
+                  <SelectItem value="forks" className="text-xs">Most Forks</SelectItem>
+                  <SelectItem value="updated" className="text-xs">Recently Updated</SelectItem>
+                  <SelectItem value="name" className="text-xs">Name (A-Z)</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 px-2 text-xs bg-[#0e1129] border-white/10 hover:bg-[#161b33] hover:text-white hover:border-white/20 text-white"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+              >
+                {isRefreshing ? (
+                  <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                )}
+                Refresh
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 px-2 text-xs bg-[#0e1129] border-white/10 hover:bg-[#161b33] hover:text-white hover:border-white/20 text-white"
+                onClick={() => setIsAddProjectModalOpen(true)}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Add Project
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 px-2 text-xs bg-[#0e1129] border-white/10 hover:bg-[#161b33] hover:text-white hover:border-white/20 text-white"
+                onClick={() => setIsBulkImportModalOpen(true)}
+              >
+                <PlusCircle className="h-3 w-3 mr-1" />
+                Bulk Import
+              </Button>
+            </div>
           </div>
         </div>
         
@@ -426,46 +495,27 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
               </SelectContent>
             </Select>
             
-            <Select
-              value={filterOptions.sort}
-              onValueChange={handleSortChange}
-              defaultValue="stars"
-            >
-              <SelectTrigger className="w-auto border-white/20 bg-white/5 text-white text-xs h-7 px-2 rounded-sm">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent className="bg-[#1a1f36] border-white/10 text-white text-xs">
-                <SelectItem value="stars" className="text-xs">Most Stars</SelectItem>
-                <SelectItem value="updated" className="text-xs">Recently Updated</SelectItem>
-                <SelectItem value="name" className="text-xs">Name (A-Z)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div className="relative w-64">
-            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-white/40" />
-            <input
-              type="text"
-              placeholder="Search agents..."
-              value={filterOptions.searchQuery}
-              onChange={(e) => handleSearch(e.target.value)}
-              className="w-full pl-7 pr-2 py-1 bg-white/5 border border-white/20 rounded-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-white placeholder-white/40 text-xs h-7"
-            />
+            <div className="relative w-64">
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-white/40" />
+              <input
+                type="text"
+                placeholder="Search agents..."
+                value={filterOptions.searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                className="w-full pl-7 pr-2 py-1 bg-white/5 border border-white/20 rounded-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-white placeholder-white/40 text-xs h-7"
+              />
+            </div>
           </div>
         </div>
         
-        <input 
-          type="button" 
-          id="bulkImportButton" 
-          onClick={() => document.getElementById('bulkImportTrigger')?.click()} 
-          className="hidden" 
-        />
-        
-        <div className="hidden">
-          <BulkImportModal 
-            onProjectsAdded={handleBulkProjectsAdded}
-            existingProjectUrls={existingProjectUrls}
-          />
+        <div className="flex items-center justify-between gap-4 text-sm">
+          <div className="flex items-center gap-2">
+            <Database className="h-4 w-4 text-indigo-400" />
+            <h2 className="font-semibold text-white">Agent Directory</h2>
+            <Badge variant="outline" className="rounded-sm text-white/70 text-[10px] h-5 border-white/10 ml-1 font-normal">
+              {agents.length} agents
+            </Badge>
+          </div>
         </div>
         
         {filteredAgents.length === 0 && !isLoading ? (
@@ -500,8 +550,17 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
       </div>
       {isAddProjectModalOpen && (
         <AddProjectForm 
+          isOpen={isAddProjectModalOpen}
           onProjectAdded={handleProjectAdded}
           onClose={() => setIsAddProjectModalOpen(false)}
+        />
+      )}
+      {isBulkImportModalOpen && (
+        <BulkImportModal 
+          isOpen={isBulkImportModalOpen}
+          onProjectsAdded={handleBulkProjectsAdded}
+          existingProjectUrls={existingProjectUrls}
+          onClose={() => setIsBulkImportModalOpen(false)}
         />
       )}
     </div>

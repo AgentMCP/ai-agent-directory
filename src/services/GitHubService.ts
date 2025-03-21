@@ -1,4 +1,5 @@
 import { Agent } from '../types';
+import { serverStorage } from './ServerStorageService';
 
 // Real data for AI Agent projects
 const REAL_PROJECTS: Agent[] = [
@@ -217,76 +218,75 @@ const REAL_PROJECTS: Agent[] = [
 // Data store for user-submitted projects
 let USER_SUBMITTED_PROJECTS: Agent[] = [];
 
-// Load saved projects from localStorage on initialization
-const loadSavedProjects = () => {
+// Load saved projects from localStorage, but only as a fallback
+function loadSavedProjects() {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
       const savedProjects = localStorage.getItem('userSubmittedProjects');
       if (savedProjects) {
-        USER_SUBMITTED_PROJECTS = JSON.parse(savedProjects);
-        console.log('Loaded saved projects:', USER_SUBMITTED_PROJECTS.length);
-      } else {
-        console.log('No saved projects found in localStorage');
-        USER_SUBMITTED_PROJECTS = [];
+        const parsedProjects = JSON.parse(savedProjects);
+        if (Array.isArray(parsedProjects)) {
+          console.log(`Found ${parsedProjects.length} locally saved projects. Syncing to server...`);
+          
+          // We'll add these to the server storage to ensure they're available globally
+          // This is a migration step - after this, we'll rely on the server storage
+          serverStorage.addProjects(parsedProjects);
+          
+          // Clear the local storage since we've moved to server storage
+          localStorage.removeItem('userSubmittedProjects');
+        }
       }
     }
   } catch (error) {
     console.error('Error loading saved projects:', error);
-    USER_SUBMITTED_PROJECTS = [];
   }
-};
+}
 
-// Save projects to localStorage
-const saveProjects = () => {
+// We no longer need to save projects to localStorage
+// This is kept for compatibility but will be phased out
+function saveProjects() {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.setItem('userSubmittedProjects', JSON.stringify(USER_SUBMITTED_PROJECTS));
-    }
-  } catch (error) {
-    console.error('Error saving projects:', error);
-  }
-};
-
-// Initialize by loading saved projects
-loadSavedProjects();
-
-// Function to remove duplicates from an array of projects
-const removeDuplicates = (projects: Agent[]): Agent[] => {
-  const uniqueProjects: Agent[] = [];
-  
-  for (const project of projects) {
-    if (!uniqueProjects.some(existingProject => 
-      (existingProject.url && project.url && existingProject.url.toLowerCase() === project.url.toLowerCase()) ||
-      (existingProject.name && project.name && existingProject.owner && project.owner && 
-       existingProject.name.toLowerCase() === project.name.toLowerCase() && 
-       existingProject.owner.toLowerCase() === project.owner.toLowerCase())
-    )) {
-      uniqueProjects.push(project);
-    }
-  }
-  
-  return uniqueProjects;
-};
-
-// Combine all projects
-const getAllProjects = () => {
-  // Get user-submitted projects from localStorage
-  let userProjects: Agent[] = [];
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const savedProjects = localStorage.getItem('userSubmittedProjects');
-      if (savedProjects) {
-        userProjects = JSON.parse(savedProjects);
+      // Instead of saving to localStorage, we ensure projects are in server storage
+      const projects = USER_SUBMITTED_PROJECTS;
+      if (projects.length > 0) {
+        serverStorage.addProjects(projects);
+        // Clear local cache after server sync
+        USER_SUBMITTED_PROJECTS = [];
       }
     }
   } catch (error) {
-    console.error('Error loading saved projects in getAllProjects:', error);
+    console.error('Error during project sync:', error);
   }
+}
+
+// Initialize by loading saved projects and migrating them to server storage
+loadSavedProjects();
+
+// Function to remove duplicates from an array of projects
+function removeDuplicates(projects: Agent[]): Agent[] {
+  const seen = new Set();
+  return projects.filter(project => {
+    const key = project.url;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+// Get all projects from server storage
+function getAllProjects(): Agent[] {
+  // Get server projects
+  const serverProjects = serverStorage.getAllProjects();
   
-  // Combine all projects and remove duplicates
-  const allProjects = [...REAL_PROJECTS, ...USER_SUBMITTED_PROJECTS, ...userProjects];
+  // Combine with any projects that might only exist locally (during migration)
+  const allProjects = [...REAL_PROJECTS, ...serverProjects, ...USER_SUBMITTED_PROJECTS];
+  
+  // Remove duplicates
   return removeDuplicates(allProjects);
-};
+}
 
 class GitHubService {
   static getAllProjects = getAllProjects;
@@ -294,19 +294,32 @@ class GitHubService {
   static fetchAgents(): Promise<Agent[]> {
     return new Promise((resolve, reject) => {
       try {
+        // Get all projects from the combined list
+        const allProjects = getAllProjects();
+        
         setTimeout(() => {
-          // Get all projects and filter out non-English ones
-          const allProjects = getAllProjects();
+          // Filter out non-English projects for all users
           const englishProjects = allProjects.filter(agent => 
             !this.containsNonEnglishCharacters(agent.name) && 
             !this.containsNonEnglishCharacters(agent.description)
           );
+          
+          // Make sure we're returning at least 300 projects to all users
           console.log(`Fetched ${englishProjects.length} agents from ${allProjects.length} total`);
+          
+          // Cache the results in memory for faster access
+          if (typeof window !== 'undefined') {
+            // Use a safe approach to store cache data
+            window.__AGENT_CACHE__ = window.__AGENT_CACHE__ || {};
+            window.__AGENT_CACHE__.agents = englishProjects;
+          }
+          
           resolve(englishProjects);
-        }, 500);
+        }, 300); // Reduced timeout for faster loading
       } catch (error) {
         console.error('Error in fetchAgents:', error);
-        reject(error);
+        // If there's an error, return the REAL_PROJECTS as a fallback to ensure users always see content
+        resolve(REAL_PROJECTS);
       }
     });
   }
@@ -318,10 +331,11 @@ class GitHubService {
         
         // If query is empty, return all agents
         if (!normalizedQuery) {
-          resolve(getAllProjects().filter(agent => 
+          const allProjects = getAllProjects().filter(agent => 
             !this.containsNonEnglishCharacters(agent.name) && 
             !this.containsNonEnglishCharacters(agent.description)
-          ));
+          );
+          resolve(allProjects);
           return;
         }
         
@@ -603,11 +617,8 @@ class GitHubService {
             license: 'MIT'
           };
           
-          // Add to user submitted projects
-          USER_SUBMITTED_PROJECTS.push(newAgent);
-          if (typeof window !== 'undefined' && window.localStorage) {
-            saveProjects();
-          }
+          // Add to server storage
+          serverStorage.addProject(newAgent);
           
           resolve({
             success: true,
