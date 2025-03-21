@@ -116,11 +116,11 @@ const AgentIntegrationButtons = ({ repoUrl, projectName }: AgentIntegrationButto
           />
         </div>
       ) : (
-        <div className="flex justify-between gap-2 w-full">
+        <div className="flex justify-center gap-5 w-full">
           <Button 
             size="sm" 
             variant="outline" 
-            className="w-1/2 min-w-[80px] text-xs py-1 h-7 rounded-sm border-black bg-black text-white hover:bg-black/90 hover:border-black/80 transition-all flex items-center justify-center gap-1"
+            className="w-24 px-3 text-xs py-0.5 h-6 rounded-full border-2 border-white/60 bg-transparent text-white hover:bg-white/10 hover:border-white/80 transition-all flex items-center justify-center gap-1"
             onClick={() => handleIntegration('Cursor AI')}
           >
             <PlusIcon className="w-3 h-3" /> Cursor
@@ -128,7 +128,7 @@ const AgentIntegrationButtons = ({ repoUrl, projectName }: AgentIntegrationButto
           <Button 
             size="sm" 
             variant="outline" 
-            className="w-1/2 min-w-[80px] text-xs py-1 h-7 rounded-sm border-[#53b3a2] bg-[#53b3a2] text-white hover:bg-[#53b3a2]/90 hover:border-[#53b3a2]/80 transition-all flex items-center justify-center gap-1"
+            className="w-24 px-3 text-xs py-0.5 h-6 rounded-full border-2 border-white/60 bg-transparent text-white hover:bg-white/10 hover:border-white/80 transition-all flex items-center justify-center gap-1"
             onClick={() => handleIntegration('Windsurf AI')}
           >
             <PlusIcon className="w-3 h-3" /> Windsurf

@@ -346,7 +346,7 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
 
   return (
-    <div id="directory" ref={directoryRef} className="py-16 px-4 bg-gradient-to-b from-[#1e2344] to-[#0e1129]">
+    <div id="directory" ref={directoryRef} className="py-16 px-4 bg-black">
       <div className="max-w-5xl mx-auto">
         <h2 className="text-xl md:text-2xl font-bold text-center text-white mb-2">
           Browse the <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">Directory</span>
