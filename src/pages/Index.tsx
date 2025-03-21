@@ -20,20 +20,11 @@ const Index = () => {
   }, []);
 
   const handleSearch = (query: string) => {
-    console.log("Index: Search triggered with query:", query);
     setSearchQuery(query);
     
-    // Scroll to directory section
     const directorySection = document.getElementById('directory');
     if (directorySection) {
       directorySection.scrollIntoView({ behavior: 'smooth' });
-    }
-    
-    // Force a re-render of the DirectoryGrid by adding a timestamp to the query
-    // This ensures the search is triggered even if the query hasn't changed
-    if (query === searchQuery) {
-      setSearchQuery(query + '?' + Date.now());
-      setTimeout(() => setSearchQuery(query), 100);
     }
   };
 

@@ -67,7 +67,6 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
         setLanguages(uniqueLanguages);
         
         setAgents(data);
-        setFilteredAgents(data); // Initialize filtered agents with all agents
       } catch (error) {
         console.error('Error loading agents:', error);
         toast({
@@ -92,25 +91,12 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
   }, []);
 
   useEffect(() => {
-    if (initialSearchQuery && initialSearchQuery !== '' && !isLoading) {
-      handleSearch(initialSearchQuery);
-    }
-  }, [initialSearchQuery, isLoading]);
-
-  useEffect(() => {
-    if (isLoading || agents.some(agent => agent.isLoading)) {
-      return; // Skip filtering if still loading
-    }
-    
-    console.log("Applying filters:", filterOptions);
-    
     const applyFilters = async () => {
       setIsLoading(true);
       
       try {
         let result = [...agents];
         
-        // Apply search if query exists
         if (filterOptions.searchQuery && filterOptions.searchQuery.trim() !== '') {
           const searchQuery = filterOptions.searchQuery.trim().toLowerCase();
           const searchTerms = searchQuery.split(/\s+/).filter(term => term.length > 0);
@@ -123,7 +109,7 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
               const description = agent.description.toLowerCase();
               const topics = agent.topics.map(topic => topic.toLowerCase());
               
-              return searchTerms.some(term => 
+              return searchTerms.every(term => 
                 name.includes(term) || 
                 description.includes(term) || 
                 topics.some(topic => topic.includes(term))
@@ -132,19 +118,13 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
             
             console.log(`Found ${result.length} results for "${searchQuery}"`);
           }
-        } else {
-          // If search is cleared, reset to show all agents
-          console.log("Search cleared, showing all agents");
-          result = [...agents];
         }
         
-        // Apply language filter if selected
         if (filterOptions.language) {
           result = result.filter(agent => agent.language === filterOptions.language);
           console.log(`After language filter "${filterOptions.language}": ${result.length} results`);
         }
         
-        // Sort the results
         result = sortAgents(result, filterOptions.sort);
         console.log(`After sorting by "${filterOptions.sort}": ${result.length} results`);
         
@@ -179,10 +159,9 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
   };
 
   const handleSearch = (query: string) => {
-    console.log("Search triggered with query:", query);
     setPage(1);
     setHasMore(true);
-    setFilterOptions(prev => ({ ...prev, searchQuery: query }));
+    setFilterOptions({ ...filterOptions, searchQuery: query });
   };
 
   const handleLanguageChange = (language: string | null) => {
@@ -208,6 +187,7 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
     try {
       const response = await GitHubService.refreshAgentData();
       
+      // Fixed: Correctly extract the agents array from the response object
       setAgents(response.agents);
       
       toast({
@@ -246,6 +226,7 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
     }
   };
 
+  // Get list of existing project URLs to prevent duplicates
   const existingProjectUrls = useMemo(() => {
     return agents.map(agent => agent.url);
   }, [agents]);

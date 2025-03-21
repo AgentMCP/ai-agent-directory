@@ -298,22 +298,18 @@ class GitHubService {
     return new Promise((resolve) => {
       setTimeout(() => {
         const normalizedQuery = query.toLowerCase().trim();
-        console.log("GitHubService: Searching for:", normalizedQuery);
         
         // If query is empty, return all agents
         if (!normalizedQuery) {
-          const allAgents = getAllProjects().filter(agent => 
+          resolve(getAllProjects().filter(agent => 
             !this.containsNonEnglishCharacters(agent.name) && 
             !this.containsNonEnglishCharacters(agent.description)
-          );
-          console.log("GitHubService: Empty query, returning all agents:", allAgents.length);
-          resolve(allAgents);
+          ));
           return;
         }
         
         // Split the query into individual terms for better matching
         const searchTerms = normalizedQuery.split(/\s+/).filter(term => term.length > 0);
-        console.log("GitHubService: Search terms:", searchTerms);
         
         // Filter agents based on search terms
         const results = getAllProjects().filter(agent => {
@@ -328,8 +324,9 @@ class GitHubService {
           const description = agent.description.toLowerCase();
           const topics = agent.topics.map(t => t.toLowerCase());
           
-          // For multi-term queries, check if ANY term matches (more inclusive)
-          return searchTerms.some(term => 
+          // Check if any search term matches any field
+          // For multi-term queries, require at least one match for each term
+          return searchTerms.every(term => 
             name.includes(term) || 
             description.includes(term) || 
             topics.some(topic => topic.includes(term))
@@ -343,10 +340,11 @@ class GitHubService {
           return bRelevance - aRelevance;
         });
         
-        console.log(`GitHubService: Search for "${query}" found ${sortedResults.length} results`);
+        // Log the search results for debugging
+        console.log(`Search for "${query}" found ${sortedResults.length} results`);
         
         resolve(sortedResults);
-      }, 100); // Reduced timeout for faster response
+      }, 300);
     });
   }
   
