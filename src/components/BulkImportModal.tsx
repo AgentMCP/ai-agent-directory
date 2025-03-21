@@ -19,6 +19,7 @@ import { ScrapeService } from '../services/ScrapeService';
 import { useAuth } from '../contexts/AuthContext';
 import { saveUserSearch } from '../services/firebase';
 import { motion } from 'framer-motion';
+import { GitHubService } from '../services/GitHubService';
 
 interface BulkImportModalProps {
   onProjectsAdded?: (count: number) => void;
@@ -191,7 +192,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
           await saveUserSearch(
             currentUser.uid,
             searchQuery,
-            newRepositories.map(repo => repo.url)
+            newRepositories.map(repo => repo)
           );
           
           toast({
@@ -322,12 +323,45 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
     setFeedbackMessage('');
   };
 
-  const handleModalClose = (open: boolean) => {
-    if (!open) {
-      resetState();
-      if (onClose) {
-        onClose();
+  const handleModalClose = async (saveData: boolean) => {
+    if (saveData && searchResults.length > 0) {
+      try {
+        // Convert URLs to Agent objects to submit
+        const newAgentObjects = searchResults.map((url, index) => ({
+          id: `user-submitted-${Date.now()}-${index}`,
+          name: url.split('/').pop() || `Repository ${index + 1}`,
+          description: 'User-submitted AI Agent or MCP project',
+          url,
+          stars: 0,
+          forks: 0,
+          language: '',
+          license: '',
+          updated: new Date().toISOString().split('T')[0],
+          owner: url.split('/')[3] || 'unknown',
+          avatar: '',
+          topics: ['ai', 'agent', 'user-submitted'],
+          isLoading: false
+        }));
+
+        // Submit the projects using GitHubService
+        console.log('Submitting projects to GitHubService:', newAgentObjects.length);
+        await GitHubService.submitProjects(newAgentObjects);
+        
+        if (onProjectsAdded) {
+          onProjectsAdded(newAgentObjects.length);
+        }
+        
+        toast({
+          title: "Success!",
+          description: `Added ${newAgentObjects.length} new projects to the directory.`,
+        });
+      } catch (error) {
+        console.error('Error saving imported repositories:', error);
       }
+    }
+    
+    if (onClose) {
+      onClose();
     }
   };
 
@@ -381,7 +415,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
                 <Button 
                   variant="default" 
                   onClick={() => {
-                    handleModalClose(false);
+                    handleModalClose(true);
                     resetState();
                   }}
                   className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none"
@@ -427,7 +461,10 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
                 </Button>
                 <Button 
                   variant="outline" 
-                  onClick={() => setShowFeedbackForm(false)}
+                  onClick={() => {
+                    setShowFeedbackForm(false);
+                    handleModalClose(false);
+                  }}
                   className="border-white/10 bg-white/5 text-white hover:bg-white/10"
                 >
                   Back
@@ -442,10 +479,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
                   variant="outline" 
                   size="sm" 
                   onClick={() => {
-                    if (onProjectsAdded) {
-                      onProjectsAdded(searchResults.length);
-                    }
-                    handleModalClose(false);
+                    handleModalClose(true);
                     resetState();
                   }}
                   className="text-xs border-white/10 bg-white/5 text-white hover:bg-white/10"
@@ -485,7 +519,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
                   size="sm" 
                   onClick={() => {
                     setShowResults(false);
-                    setShowManualInput(false);
+                    handleModalClose(false);
                   }}
                   className="text-xs border-white/10 bg-white/5 text-white hover:bg-white/10"
                 >
@@ -519,7 +553,10 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  onClick={() => setShowManualInput(false)}
+                  onClick={() => {
+                    setShowManualInput(false);
+                    handleModalClose(false);
+                  }}
                   className="text-xs border-white/10 bg-white/5 text-white hover:bg-white/10"
                 >
                   Back to Search
@@ -570,7 +607,10 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
             <>
               <Button 
                 variant="outline" 
-                onClick={() => setShowManualInput(!showManualInput)}
+                onClick={() => {
+                  setShowManualInput(!showManualInput);
+                  handleModalClose(false);
+                }}
                 className="border-white/10 bg-white/5 text-white hover:bg-white/10"
               >
                 {showManualInput ? 'Auto Search' : 'Manual Entry'}

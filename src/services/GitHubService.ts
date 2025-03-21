@@ -313,6 +313,35 @@ function getAllProjects(): Agent[] {
   return uniqueProjects;
 }
 
+// Add projects from bulk import or form submission
+function addUserSubmittedProjects(newProjects: Agent[]) {
+  console.log(`Adding ${newProjects.length} new user-submitted projects`);
+  
+  // First add to USER_SUBMITTED_PROJECTS array in memory
+  USER_SUBMITTED_PROJECTS = [...USER_SUBMITTED_PROJECTS, ...newProjects];
+  console.log(`USER_SUBMITTED_PROJECTS now has ${USER_SUBMITTED_PROJECTS.length} projects`);
+  
+  // Also add to server storage to ensure they persist
+  serverStorage.addProjects(newProjects);
+  
+  // Save to localStorage as a backup (will be migrated on next load)
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem('userSubmittedProjects', JSON.stringify(USER_SUBMITTED_PROJECTS));
+    }
+  } catch (error) {
+    console.error('Error saving submitted projects to localStorage:', error);
+  }
+  
+  // Clear agent cache to ensure fresh data on next load
+  if (typeof window !== 'undefined' && window.__AGENT_CACHE__) {
+    window.__AGENT_CACHE__.agents = null;
+  }
+  
+  // Return all projects including the new ones
+  return getAllProjects();
+}
+
 class GitHubService {
   static getAllProjects = getAllProjects;
 
@@ -701,6 +730,16 @@ class GitHubService {
       return { timestamp: new Date().toISOString(), agents: [] };
     }
   };
+
+  // Add new method to handle bulk project submission
+  static submitProjects(projects: Agent[]): Promise<Agent[]> {
+    return new Promise((resolve) => {
+      // Process the projects immediately
+      const processedProjects = addUserSubmittedProjects(projects);
+      console.log(`Successfully added ${projects.length} projects. Total projects: ${processedProjects.length}`);
+      resolve(processedProjects);
+    });
+  }
 }
 
 export { GitHubService, REAL_PROJECTS };
