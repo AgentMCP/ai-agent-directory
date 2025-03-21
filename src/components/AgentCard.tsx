@@ -66,7 +66,7 @@ const AgentCard = ({ agent }: AgentCardProps) => {
         </div>
       </div>
       
-      <div className="p-4">
+      <div className="p-4 flex flex-col h-[calc(100%-2rem)]">
         {/* Title and owner */}
         <div className="flex items-center mb-2">
           <img 
@@ -80,12 +80,12 @@ const AgentCard = ({ agent }: AgentCardProps) => {
         </div>
         
         {/* Description */}
-        <p className="text-xs text-white/70 mb-3 line-clamp-2 h-[2.5rem]">
+        <p className="text-xs text-white/70 mb-4 line-clamp-2 min-h-[2.5rem]">
           {truncatedDescription}
         </p>
         
         {/* Tags */}
-        <div className="flex flex-wrap gap-1 mb-3">
+        <div className="flex flex-wrap gap-1.5 mb-4">
           {agent.language && (
             <Badge 
               variant="outline" 
@@ -119,15 +119,13 @@ const AgentCard = ({ agent }: AgentCardProps) => {
           ))}
         </div>
         
-        {/* Action button */}
-        <a 
-          href={agent.url} 
-          target="_blank" 
-          rel="noopener noreferrer" 
-          className="block w-full text-center text-xs bg-white/5 hover:bg-white/10 text-white py-1.5 rounded border border-white/10 transition-colors flex items-center justify-center"
-        >
-          View on GitHub <ArrowUpRight className="w-3 h-3 ml-1" />
-        </a>
+        {/* Integration Buttons */}
+        <div className="mt-auto w-full pt-1">
+          <AgentIntegrationButtons 
+            repoUrl={agent.url} 
+            projectName={agent.name} 
+          />
+        </div>
       </div>
     </motion.div>
   );

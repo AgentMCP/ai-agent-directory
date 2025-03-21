@@ -105,29 +105,33 @@ const AgentIntegrationButtons = ({ repoUrl, projectName }: AgentIntegrationButto
     <div className="w-full">
       {integrationState.isLoading ? (
         <div className="space-y-2">
-          <div className="flex justify-between text-xs text-gray-600">
+          <div className="flex justify-between text-xs text-white/70">
             <span>{integrationState.statusMessage}</span>
             <span>{integrationState.progress}%</span>
           </div>
-          <Progress value={integrationState.progress} className="h-2 bg-gray-100" indicatorClassName="bg-primary" />
+          <Progress 
+            value={integrationState.progress} 
+            className="h-1.5 bg-white/10" 
+            indicatorClassName="bg-gradient-to-r from-indigo-500 to-purple-500" 
+          />
         </div>
       ) : (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex justify-between gap-2 w-full">
           <Button 
             size="sm" 
             variant="outline" 
-            className="text-xs py-1 h-8 rounded-full border-gray-200 hover:border-primary hover:text-primary transition-colors flex items-center gap-1"
+            className="w-1/2 min-w-[80px] text-xs py-1 h-7 rounded-sm border-black bg-black text-white hover:bg-black/90 hover:border-black/80 transition-all flex items-center justify-center gap-1"
             onClick={() => handleIntegration('Cursor AI')}
           >
-            <PlusIcon className="w-3 h-3" /> Cursor AI
+            <PlusIcon className="w-3 h-3" /> Cursor
           </Button>
           <Button 
             size="sm" 
             variant="outline" 
-            className="text-xs py-1 h-8 rounded-full border-gray-200 hover:border-primary hover:text-primary transition-colors flex items-center gap-1"
+            className="w-1/2 min-w-[80px] text-xs py-1 h-7 rounded-sm border-[#53b3a2] bg-[#53b3a2] text-white hover:bg-[#53b3a2]/90 hover:border-[#53b3a2]/80 transition-all flex items-center justify-center gap-1"
             onClick={() => handleIntegration('Windsurf AI')}
           >
-            <PlusIcon className="w-3 h-3" /> Windsurf AI
+            <PlusIcon className="w-3 h-3" /> Windsurf
           </Button>
         </div>
       )}
