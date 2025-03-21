@@ -116,7 +116,7 @@ const AgentIntegrationButtons = ({ repoUrl, projectName }: AgentIntegrationButto
           />
         </div>
       ) : (
-        <div className="flex justify-center gap-5 w-full">
+        <div className="flex justify-center items-center gap-5 w-full">
           <Button 
             size="sm" 
             variant="outline" 

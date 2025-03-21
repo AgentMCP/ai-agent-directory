@@ -46,7 +46,7 @@ const Index = () => {
       <main className="bg-[#0e1129] min-h-screen">
         <Hero onSearch={handleSearch} onAddProject={handleAddProject} totalProjects={totalProjects} />
         
-        <div id="directory" className="max-w-7xl mx-auto px-4 py-6">
+        <div id="directory" className="max-w-7xl mx-auto px-4 pt-2 pb-8">
           <DirectoryGrid initialSearchQuery={searchQuery} />
         </div>
         

@@ -12,7 +12,7 @@ interface HeroProps {
 
 const Hero = ({ onSearch, onAddProject, totalProjects }: HeroProps) => {
   return (
-    <div className="relative py-6 px-4 bg-gradient-to-b from-[#0e1129] to-[#1e2344] text-white overflow-hidden">
+    <div className="relative py-5 px-4 bg-gradient-to-b from-[#0e1129] to-[#1e2344] text-white overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute inset-0 overflow-hidden opacity-20">
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-indigo-500 rounded-full filter blur-3xl opacity-20"></div>
@@ -20,9 +20,9 @@ const Hero = ({ onSearch, onAddProject, totalProjects }: HeroProps) => {
       </div>
       
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row items-center gap-6">
+        <div className="flex flex-col md:flex-row items-center gap-5">
           {/* Left side: Hero content */}
-          <div className="w-full md:w-1/2 text-center md:text-left space-y-3">
+          <div className="w-full md:w-1/2 text-center md:text-left space-y-2">
             <motion.div 
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -54,41 +54,17 @@ const Hero = ({ onSearch, onAddProject, totalProjects }: HeroProps) => {
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, delay: 0.3 }}
-              className="flex flex-wrap justify-center md:justify-start gap-2 mt-3"
-            >
-              <Button 
-                onClick={onAddProject} 
-                size="sm"
-                className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none shadow-md"
-              >
-                Add Project <ArrowRight className="ml-1 h-3.5 w-3.5" />
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                size="sm"
-                className="border-white/20 bg-white/5 hover:bg-white/10 text-white"
-                onClick={() => window.open('https://github.com/AgentMCP/ai-agent-directory', '_blank')}
-              >
-                <Github className="mr-1 h-3.5 w-3.5" /> Star on GitHub
-              </Button>
-            </motion.div>
-            
-            <motion.div 
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.4 }}
-              className="flex items-center justify-center md:justify-start gap-4 text-xs text-white/60 mt-2"
+              className="flex items-center justify-center md:justify-start gap-4 text-xs text-white/60 mt-3"
             >
               <div className="flex items-center">
-                <Database className="h-2 w-2 mr-0.5 text-indigo-400" />
-                <span className="text-[10px] font-medium border-b border-indigo-400/30 pb-0.5">{totalProjects}+ Open Source AI Agent Projects</span>
+                <Database className="h-2.5 w-2.5 mr-1 text-indigo-400" />
+                <span className="text-[11px] font-medium border-b border-indigo-400/30 pb-0.5">{totalProjects}+ Open Source AI Agent Projects</span>
               </div>
             </motion.div>
           </div>
           
           {/* Right side: Search and Directory Preview */}
-          <div className="w-full md:w-1/2 space-y-4">
+          <div className="w-full md:w-1/2 space-y-3 mt-4 md:mt-0">
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -105,7 +81,7 @@ const Hero = ({ onSearch, onAddProject, totalProjects }: HeroProps) => {
               transition={{ duration: 0.3, delay: 0.1 }}
               className="bg-[#1a1f36]/50 backdrop-blur-sm rounded-lg border border-white/10 p-3 shadow-xl"
             >
-              <div className="flex justify-between items-center mb-3">
+              <div className="flex justify-between items-center mb-2.5">
                 <h3 className="text-sm font-semibold text-white flex items-center">
                   <Star className="h-3 w-3 mr-1 text-yellow-400" />
                   Popular AI Agents
@@ -119,13 +95,15 @@ const Hero = ({ onSearch, onAddProject, totalProjects }: HeroProps) => {
                 </Button>
               </div>
               
-              <div className="grid grid-cols-2 gap-2">
-                {/* Preview Cards - Just showing 4 examples */}
+              <div className="grid grid-cols-3 gap-2">
+                {/* Preview Cards - Now showing 6 examples */}
                 {[
                   { name: 'Auto-GPT', stars: '153k', language: 'Python' },
                   { name: 'BabyAGI', stars: '17.7k', language: 'Python' },
                   { name: 'AgentGPT', stars: '28.1k', language: 'TypeScript' },
-                  { name: 'LangChain', stars: '77k', language: 'Python' }
+                  { name: 'LangChain', stars: '77k', language: 'Python' },
+                  { name: 'GPT Engineer', stars: '48.2k', language: 'Python' },
+                  { name: 'MetaGPT', stars: '32.9k', language: 'Python' }
                 ].map((agent, index) => (
                   <div key={index} className="bg-[#0e1129] rounded-md p-2 border border-white/5 hover:border-indigo-500/30 transition-colors cursor-pointer">
                     <h4 className="font-medium text-white text-xs truncate">{agent.name}</h4>

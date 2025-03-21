@@ -120,7 +120,7 @@ const AgentCard = ({ agent }: AgentCardProps) => {
         </div>
         
         {/* Integration Buttons */}
-        <div className="mt-auto w-full pt-1">
+        <div className="mt-auto w-full pt-3">
           <AgentIntegrationButtons 
             repoUrl={agent.url} 
             projectName={agent.name} 

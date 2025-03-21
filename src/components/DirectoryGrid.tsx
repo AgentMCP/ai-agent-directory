@@ -346,22 +346,14 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
 
   return (
-    <div id="directory" ref={directoryRef} className="py-16 px-4 bg-black">
+    <div id="directory" ref={directoryRef} className="py-6 px-4 bg-gradient-to-b from-[#0e1129] to-[#1e2344]">
       <div className="max-w-5xl mx-auto">
-        <h2 className="text-xl md:text-2xl font-bold text-center text-white mb-2">
-          Browse the <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">Directory</span>
-        </h2>
-        
-        <p className="text-white/70 max-w-2xl mx-auto mb-4 text-[10px] text-center">
-          Explore our curated collection of AI agent projects. Filter by programming language, sort by popularity, or search for specific capabilities.
-        </p>
-        
         {/* Directory header with title and buttons */}
-        <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
-          <div className="flex items-center gap-1">
-            <Database className="h-3 w-3 text-indigo-400" />
-            <h3 className="text-xs font-bold text-white">AI Agent Directory</h3>
-            <span className="text-[10px] text-white/60 ml-1">
+        <div className="flex items-center justify-between mb-4 border-b border-white/10 pb-2">
+          <div className="flex items-center gap-1.5">
+            <Database className="h-3.5 w-3.5 text-indigo-400" />
+            <h3 className="text-sm font-bold text-white">AI Agent Directory</h3>
+            <span className="text-xs text-white/60 ml-1.5">
               {filteredAgents.length > 0 ? (
                 <>Showing <span className="font-semibold text-indigo-400">{filteredAgents.length}</span> of <span className="font-semibold text-indigo-400">{agents.length}</span> total projects</>
               ) : isLoading ? (
