@@ -220,19 +220,28 @@ let USER_SUBMITTED_PROJECTS: Agent[] = [];
 // Load saved projects from localStorage on initialization
 const loadSavedProjects = () => {
   try {
-    const savedProjects = localStorage.getItem('userSubmittedProjects');
-    if (savedProjects) {
-      USER_SUBMITTED_PROJECTS = JSON.parse(savedProjects);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const savedProjects = localStorage.getItem('userSubmittedProjects');
+      if (savedProjects) {
+        USER_SUBMITTED_PROJECTS = JSON.parse(savedProjects);
+        console.log('Loaded saved projects:', USER_SUBMITTED_PROJECTS.length);
+      } else {
+        console.log('No saved projects found in localStorage');
+        USER_SUBMITTED_PROJECTS = [];
+      }
     }
   } catch (error) {
     console.error('Error loading saved projects:', error);
+    USER_SUBMITTED_PROJECTS = [];
   }
 };
 
 // Save projects to localStorage
 const saveProjects = () => {
   try {
-    localStorage.setItem('userSubmittedProjects', JSON.stringify(USER_SUBMITTED_PROJECTS));
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem('userSubmittedProjects', JSON.stringify(USER_SUBMITTED_PROJECTS));
+    }
   } catch (error) {
     console.error('Error saving projects:', error);
   }
@@ -264,12 +273,14 @@ const getAllProjects = () => {
   // Get user-submitted projects from localStorage
   let userProjects: Agent[] = [];
   try {
-    const savedProjects = localStorage.getItem('userSubmittedProjects');
-    if (savedProjects) {
-      userProjects = JSON.parse(savedProjects);
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const savedProjects = localStorage.getItem('userSubmittedProjects');
+      if (savedProjects) {
+        userProjects = JSON.parse(savedProjects);
+      }
     }
   } catch (error) {
-    console.error('Error loading saved projects:', error);
+    console.error('Error loading saved projects in getAllProjects:', error);
   }
   
   // Combine all projects and remove duplicates
@@ -281,16 +292,22 @@ class GitHubService {
   static getAllProjects = getAllProjects;
 
   static fetchAgents(): Promise<Agent[]> {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // Get all projects and filter out non-English ones
-        const allProjects = getAllProjects();
-        const englishProjects = allProjects.filter(agent => 
-          !this.containsNonEnglishCharacters(agent.name) && 
-          !this.containsNonEnglishCharacters(agent.description)
-        );
-        resolve(englishProjects);
-      }, 500);
+    return new Promise((resolve, reject) => {
+      try {
+        setTimeout(() => {
+          // Get all projects and filter out non-English ones
+          const allProjects = getAllProjects();
+          const englishProjects = allProjects.filter(agent => 
+            !this.containsNonEnglishCharacters(agent.name) && 
+            !this.containsNonEnglishCharacters(agent.description)
+          );
+          console.log(`Fetched ${englishProjects.length} agents from ${allProjects.length} total`);
+          resolve(englishProjects);
+        }, 500);
+      } catch (error) {
+        console.error('Error in fetchAgents:', error);
+        reject(error);
+      }
     });
   }
 
@@ -386,7 +403,11 @@ class GitHubService {
   }
 
   static getLastUpdatedTimestamp(): string {
-    return localStorage.getItem('lastAgentRefresh') || new Date().toISOString();
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return localStorage.getItem('lastAgentRefresh') || new Date().toISOString();
+    } else {
+      return new Date().toISOString();
+    }
   }
 
   static formatLastUpdated(timestamp: string): string {
@@ -411,7 +432,9 @@ class GitHubService {
       setTimeout(() => {
         const refreshedAgents = getAllProjects();
         const timestamp = new Date().toISOString();
-        localStorage.setItem('lastAgentRefresh', timestamp);
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem('lastAgentRefresh', timestamp);
+        }
         resolve({ timestamp, agents: refreshedAgents });
       }, 1000);
     });
@@ -582,7 +605,9 @@ class GitHubService {
           
           // Add to user submitted projects
           USER_SUBMITTED_PROJECTS.push(newAgent);
-          saveProjects();
+          if (typeof window !== 'undefined' && window.localStorage) {
+            saveProjects();
+          }
           
           resolve({
             success: true,
@@ -598,6 +623,52 @@ class GitHubService {
       }, 800);
     });
   }
+
+  static addProject = async function(url: string): Promise<{success: boolean, error?: string, agent?: Agent}> {
+    return GitHubService.addProjectFromGitHub(url);
+  };
+
+  static addProjects = async function(urls: string[]): Promise<{url: string, success: boolean, error?: string}[]> {
+    const results = [];
+    
+    for (const url of urls) {
+      try {
+        const result = await GitHubService.addProjectFromGitHub(url);
+        results.push({
+          url,
+          success: result.success,
+          error: result.error
+        });
+      } catch (error) {
+        results.push({
+          url,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+    
+    return results;
+  };
+
+  static getExistingProjectUrls = function(): string[] {
+    return getAllProjects().map(project => project.url);
+  };
+
+  static getAgentData = async (): Promise<{timestamp: string, agents: Agent[]}> => {
+    try {
+      const agents = await GitHubService.fetchAgents();
+      const timestamp = new Date().toISOString();
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem('lastAgentRefresh', timestamp);
+      }
+      return { timestamp, agents };
+    } catch (error) {
+      console.error('Error in getAgentData:', error);
+      // Return empty data rather than throwing to prevent cascading errors
+      return { timestamp: new Date().toISOString(), agents: [] };
+    }
+  };
 }
 
 export { GitHubService };

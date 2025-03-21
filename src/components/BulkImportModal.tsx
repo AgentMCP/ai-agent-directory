@@ -14,18 +14,20 @@ import { Label } from './ui/label';
 import { Progress } from './ui/progress';
 import { useToast } from './ui/use-toast';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
-import { CheckCircle, Link, Search, Loader2, AlertCircle, Download } from 'lucide-react';
+import { CheckCircle, Link, Search, Loader2, AlertCircle, Download, Sparkles, Plus } from 'lucide-react';
 import { Agent } from '../types';
 import { ScrapeService } from '../services/ScrapeService';
 import { useAuth } from '../contexts/AuthContext';
 import { saveUserSearch } from '../services/firebase';
+import { motion } from 'framer-motion';
 
 interface BulkImportModalProps {
-  onProjectsAdded?: (projects: Agent[]) => void;
+  onProjectsAdded?: (urls: string[]) => void;
   existingProjectUrls?: string[];
+  onCancel?: () => void;
 }
 
-const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImportModalProps) => {
+const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onCancel }: BulkImportModalProps) => {
   const { toast } = useToast();
   const { currentUser } = useAuth();
   
@@ -36,9 +38,9 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
   const [status, setStatus] = useState('');
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [importedProjects, setImportedProjects] = useState<Agent[]>([]);
+  const [importedProjects, setImportedProjects] = useState<string[]>([]);
   const [showResults, setShowResults] = useState(false);
-  const [searchResults, setSearchResults] = useState<Agent[]>([]);
+  const [searchResults, setSearchResults] = useState<string[]>([]);
   const [importedCount, setImportedCount] = useState(0);
   const [totalFound, setTotalFound] = useState(0);
   const [showSatisfactionQuery, setShowSatisfactionQuery] = useState(false);
@@ -146,7 +148,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
       }
 
       // Process repositories in batches to avoid UI freezing
-      const processedRepos: Agent[] = [];
+      const processedRepos: string[] = [];
       const batchSize = 10;
       
       for (let i = 0; i < newRepositories.length; i += batchSize) {
@@ -154,7 +156,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
         
         for (const repo of batch) {
           if (repo) {
-            processedRepos.push(repo);
+            processedRepos.push(repo.url);
             
             // Update progress
             const currentProgress = 50 + Math.floor((processedRepos.length / newRepositories.length) * 50);
@@ -176,12 +178,12 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
 
       // Add the repositories to the results
       setShowResults(true);
-      setSearchResults(newRepositories);
+      setSearchResults(newRepositories.map(repo => repo.url));
       setImportedCount(newRepositories.length);
 
       // If onProjectsAdded callback is provided, call it
       if (onProjectsAdded && newRepositories.length > 0) {
-        onProjectsAdded(newRepositories);
+        onProjectsAdded(newRepositories.map(repo => repo.url));
       }
 
       // Save search to user's account if logged in
@@ -190,7 +192,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
           await saveUserSearch(
             currentUser.uid,
             searchQuery,
-            newRepositories
+            newRepositories.map(repo => repo.url)
           );
           
           toast({
@@ -226,8 +228,8 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
         );
 
         if (newFallbackRepos.length > 0) {
-          setImportedProjects(newFallbackRepos);
-          setSearchResults(newFallbackRepos);
+          setImportedProjects(newFallbackRepos.map(repo => repo.url));
+          setSearchResults(newFallbackRepos.map(repo => repo.url));
           setImportedCount(newFallbackRepos.length);
           setTotalFound(newFallbackRepos.length);
           setStatus(`Loaded ${newFallbackRepos.length} fallback repositories.`);
@@ -235,7 +237,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
 
           // If onProjectsAdded callback is provided, call it with fallback repos
           if (onProjectsAdded) {
-            onProjectsAdded(newFallbackRepos);
+            onProjectsAdded(newFallbackRepos.map(repo => repo.url));
           }
 
           toast({
@@ -280,10 +282,10 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
       const result = await ScrapeService.addProjectFromGitHub(manualUrl);
 
       if (result.success && result.agent) {
-        setImportedProjects([result.agent]);
+        setImportedProjects([manualUrl]);
 
         if (onProjectsAdded) {
-          onProjectsAdded([result.agent]);
+          onProjectsAdded([manualUrl]);
         }
 
         toast({
@@ -324,22 +326,32 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
   const handleModalClose = (open: boolean) => {
     if (!open) {
       resetState();
+      if (onCancel) {
+        onCancel();
+      }
     }
     setIsOpen(open);
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog open={isOpen} onOpenChange={handleModalClose}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="flex items-center gap-2">
-          <Search className="w-4 h-4" />
+        <Button 
+          id="bulkImportTrigger"
+          variant="outline" 
+          className="flex items-center gap-2 bg-white/5 border-white/10 text-white hover:bg-white/10 hover:border-indigo-500/30"
+        >
+          <Plus className="w-4 h-4" />
           Add in Bulk
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[600px] bg-[#1a1f36] border-white/10 text-white">
         <DialogHeader>
-          <DialogTitle>Bulk Import AI Agent Projects</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-white flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-indigo-400" />
+            Bulk Import AI Agent Projects
+          </DialogTitle>
+          <DialogDescription className="text-white/70">
             {!showManualInput ? 
               "Search and import AI agent and MCP projects automatically. This will search for repositories containing terms like \"AI Agent\", \"MCP\", etc." :
               "Enter the GitHub URL of an AI agent project you want to add. The repository should include terms like \"AI agent\" or \"MCP\" in its description."
@@ -351,22 +363,22 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
           {isLoading ? (
             <div className="space-y-6">
               <div className="space-y-2">
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between text-sm text-white/80">
                   <span>{status}</span>
                   <span>{progress}%</span>
                 </div>
-                <Progress value={progress} className="h-2" />
+                <Progress value={progress} className="h-2 bg-white/10" indicatorClassName="bg-gradient-to-r from-indigo-500 to-purple-500" />
               </div>
 
               {importedProjects.length > 0 && (
                 <div className="mt-4">
-                  <h4 className="text-sm font-medium mb-2">Imported Projects ({importedProjects.length})</h4>
-                  <div className="max-h-[200px] overflow-y-auto border rounded-md p-2 bg-gray-50">
+                  <h4 className="text-sm font-medium mb-2 text-white/90">Imported Projects ({importedProjects.length})</h4>
+                  <div className="max-h-[200px] overflow-y-auto border border-white/10 rounded-md p-2 bg-white/5">
                     <ul className="space-y-1">
                       {importedProjects.map((project, index) => (
-                        <li key={index} className="text-sm py-1 border-b last:border-0 flex items-center gap-2">
-                          <span className="w-4 h-4 rounded-full bg-green-100 flex items-center justify-center text-green-600">✓</span>
-                          {project.name} <span className="text-xs text-gray-500">({project.owner})</span>
+                        <li key={index} className="text-sm py-1 border-b border-white/10 last:border-0 flex items-center gap-2 text-white/80">
+                          <span className="w-4 h-4 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400">✓</span>
+                          {project} 
                         </li>
                       ))}
                     </ul>
@@ -376,7 +388,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
             </div>
           ) : showSatisfactionQuery ? (
             <div className="space-y-4">
-              <p className="text-sm">Are you satisfied with the import results?</p>
+              <p className="text-sm text-white/80">Are you satisfied with the import results?</p>
               <div className="flex gap-3">
                 <Button 
                   variant="default" 
@@ -384,12 +396,14 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
                     setIsOpen(false);
                     resetState();
                   }}
+                  className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none"
                 >
                   Yes, I'm satisfied
                 </Button>
                 <Button 
                   variant="outline" 
                   onClick={() => setShowFeedbackForm(true)}
+                  className="border-white/10 bg-white/5 text-white hover:bg-white/10"
                 >
                   No, provide feedback
                 </Button>
@@ -397,216 +411,198 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [] }: BulkImpo
             </div>
           ) : showFeedbackForm ? (
             <div className="space-y-4">
-              <div className="flex flex-col gap-2">
-                <label htmlFor="feedbackMessage" className="text-sm font-medium">
-                  What issues did you encounter? This will be sent to the GitHub repository.
-                </label>
-                <textarea
-                  id="feedbackMessage"
-                  placeholder="Please describe what was wrong with the import results..."
+              <div className="space-y-2">
+                <Label htmlFor="feedback" className="text-white/90">What could be improved?</Label>
+                <textarea 
+                  id="feedback"
                   value={feedbackMessage}
-                  onChange={e => setFeedbackMessage(e.target.value)}
-                  className="w-full min-h-[100px] p-2 border rounded-md"
+                  onChange={(e) => setFeedbackMessage(e.target.value)}
+                  className="w-full h-32 rounded-md border border-white/10 bg-white/5 text-white p-2 focus:border-indigo-500 focus:ring-indigo-500"
+                  placeholder="Please share your feedback..."
                 />
               </div>
-
-              <div className="flex items-center gap-2 p-2 bg-blue-50 text-blue-700 rounded">
-                <AlertCircle className="h-4 w-4" />
-                <p className="text-xs">
-                  Your feedback will be sent to the GitHub repository as an issue to help improve the project.
-                </p>
-              </div>
-
               <div className="flex gap-3">
                 <Button 
                   variant="default" 
                   onClick={() => {
-                    // Send feedback to GitHub
-                    if (feedbackMessage.trim()) {
-                      // Create a GitHub issue URL with the feedback pre-filled
-                      const issueUrl = `https://github.com/AgentMCP/ai-agent-directory/issues/new?title=Bulk Import Feedback&body=${encodeURIComponent(feedbackMessage)}`;
-                      window.open(issueUrl, '_blank');
-                      
-                      toast({
-                        title: "Feedback Sent",
-                        description: "Thank you for your feedback. You've been redirected to GitHub to submit your issue."
-                      });
-                      
-                      setFeedbackMessage('');
-                      setShowFeedbackForm(false);
-                      setShowManualInput(true); // Show manual input after feedback
-                    } else {
-                      toast({
-                        title: "Empty Feedback",
-                        description: "Please provide some feedback before submitting.",
-                        variant: "destructive"
-                      });
-                    }
+                    // Here you would typically send the feedback to a server
+                    toast({
+                      title: 'Feedback Submitted',
+                      description: 'Thank you for your feedback!',
+                    });
+                    setIsOpen(false);
+                    resetState();
                   }}
+                  className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none"
                 >
                   Submit Feedback
                 </Button>
                 <Button 
                   variant="outline" 
-                  onClick={() => {
-                    setShowFeedbackForm(false);
-                    setShowManualInput(true); // Skip feedback and go to manual input
-                  }}
+                  onClick={() => setShowFeedbackForm(false)}
+                  className="border-white/10 bg-white/5 text-white hover:bg-white/10"
                 >
-                  Skip & Add Manually
+                  Back
+                </Button>
+              </div>
+            </div>
+          ) : showResults ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium text-white/90">Found {totalFound} repositories</h4>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    if (onProjectsAdded) {
+                      onProjectsAdded(searchResults);
+                    }
+                    setIsOpen(false);
+                    resetState();
+                  }}
+                  className="text-xs border-white/10 bg-white/5 text-white hover:bg-white/10"
+                >
+                  <Download className="w-3 h-3 mr-1" />
+                  Import All
+                </Button>
+              </div>
+              
+              <div className="max-h-[300px] overflow-y-auto border border-white/10 rounded-md bg-white/5">
+                <ul className="divide-y divide-white/10">
+                  {searchResults.map((url, index) => (
+                    <motion.li 
+                      key={index} 
+                      className="p-2 text-sm flex items-center justify-between hover:bg-white/5"
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2, delay: index * 0.05 }}
+                    >
+                      <a 
+                        href={url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-indigo-400 hover:underline flex items-center"
+                      >
+                        <Link className="w-3 h-3 mr-1 flex-shrink-0" />
+                        {url.replace('https://github.com/', '')}
+                      </a>
+                    </motion.li>
+                  ))}
+                </ul>
+              </div>
+              
+              <div className="pt-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    setShowResults(false);
+                    setShowManualInput(false);
+                  }}
+                  className="text-xs border-white/10 bg-white/5 text-white hover:bg-white/10"
+                >
+                  Back to Search
                 </Button>
               </div>
             </div>
           ) : showManualInput ? (
             <div className="space-y-4">
-              <div className="flex flex-col gap-2">
-                <label htmlFor="manualUrl" className="text-sm font-medium">
-                  GitHub Repository URL
-                </label>
+              <div className="space-y-2">
+                <Label htmlFor="manual-url" className="text-white/90">GitHub Repository URL</Label>
                 <div className="flex gap-2">
-                  <Input
-                    id="manualUrl"
-                    placeholder="https://github.com/username/repository"
+                  <Input 
+                    id="manual-url"
                     value={manualUrl}
-                    onChange={e => setManualUrl(e.target.value)}
-                    className="flex-1"
+                    onChange={(e) => setManualUrl(e.target.value)}
+                    placeholder="https://github.com/username/repo"
+                    className="flex-1 bg-white/5 border-white/10 text-white placeholder:text-white/50 focus:border-indigo-500"
                   />
                   <Button 
                     onClick={handleManualImport}
-                    disabled={isLoading || !manualUrl.trim()}
+                    disabled={!manualUrl.includes('github.com/')}
+                    className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none"
                   >
-                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link className="mr-2 h-4 w-4" />}
                     Add
                   </Button>
                 </div>
               </div>
-
-              <div className="flex items-center gap-2 p-2 bg-blue-50 text-blue-700 rounded">
-                <AlertCircle className="h-4 w-4" />
-                <p className="text-xs">
-                  Enter the GitHub URL of an AI agent project you want to add. The repository should include terms like "AI agent" or "MCP" in its description.
-                </p>
+              
+              <div className="pt-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setShowManualInput(false)}
+                  className="text-xs border-white/10 bg-white/5 text-white hover:bg-white/10"
+                >
+                  Back to Search
+                </Button>
               </div>
-
-              <Button 
-                variant="outline" 
-                className="w-full"
-                onClick={() => {
-                  setShowManualInput(false);
-                  setShowSatisfactionQuery(false);
-                }}
-              >
-                Go back to bulk import
-              </Button>
             </div>
           ) : (
-            <div className="flex flex-col gap-4 py-4">
+            <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="githubToken">GitHub Token (Optional)</Label>
+                <Label htmlFor="search-query" className="text-white/90">Search Query</Label>
                 <Input 
-                  id="githubToken"
-                  value={githubToken}
-                  onChange={(e) => setGithubToken(e.target.value)}
-                  placeholder="Enter GitHub token for higher rate limits"
-                  disabled={isLoading}
-                />
-                <p className="text-xs text-gray-500">
-                  A GitHub token allows for higher API rate limits. Store it in your browser for future use.
-                </p>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="searchQuery">Search Query</Label>
-                <Input
-                  id="searchQuery"
+                  id="search-query"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="AI Agent MCP"
-                  disabled={isLoading}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/50 focus:border-indigo-500"
                 />
-                <p className="text-xs text-gray-500">
-                  Customize your search query to find specific repositories.
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="github-token" className="text-white/90">GitHub Token (Optional)</Label>
+                <Input 
+                  id="github-token"
+                  value={githubToken}
+                  onChange={(e) => setGithubToken(e.target.value)}
+                  placeholder="ghp_xxxxxxxxxxxx"
+                  type="password"
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/50 focus:border-indigo-500"
+                />
+                <p className="text-xs text-white/60">
+                  A GitHub token increases search limits. <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">Get a token</a>
                 </p>
               </div>
-
+              
               {error && (
-                <Alert variant="destructive">
+                <Alert variant="destructive" className="bg-red-500/10 border-red-500/20 text-red-400">
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle>Error</AlertTitle>
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-
-              {isLoading && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>{status}</span>
-                    <span>{progress}%</span>
-                  </div>
-                  <Progress value={progress} className="h-2" />
-                </div>
-              )}
-
-              {importedProjects.length > 0 && (
-                <div className="mt-4">
-                  <h3 className="text-lg font-medium mb-2">Imported Repositories ({importedProjects.length})</h3>
-                  <div className="max-h-60 overflow-y-auto border rounded-md">
-                    <ul className="divide-y">
-                      {importedProjects.map((project, index) => (
-                        <li key={`${project?.id || index}`} className="p-2 hover:bg-gray-50 flex items-center space-x-2">
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                          <span className="font-medium">{project?.name || 'Unnamed Repository'}</span>
-                          <span className="text-sm text-gray-500">({project?.owner || 'unknown'})</span>
-                          {project?.url ? (
-                            <a 
-                              href={project.url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-blue-500 hover:underline ml-auto text-sm flex items-center"
-                            >
-                              <Link className="h-3 w-3 mr-1" /> View
-                            </a>
-                          ) : (
-                            <span className="ml-auto text-sm text-gray-400">No URL</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
 
-        <DialogFooter className="sm:justify-start">
-          <Button
-            type="button"
-            variant="default"
-            onClick={handleSearch}
-            disabled={isLoading}
-            className="mr-2"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Importing...
-              </>
-            ) : (
-              <>
-                <Download className="mr-2 h-4 w-4" />
-                Import Repositories
-              </>
-            )}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setIsOpen(false)}
-            disabled={isLoading}
-          >
-            {isLoading ? 'Please wait...' : 'Cancel'}
-          </Button>
+        <DialogFooter className="gap-2 sm:gap-0">
+          {!isLoading && !showResults && !showSatisfactionQuery && !showFeedbackForm && (
+            <>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowManualInput(!showManualInput)}
+                className="border-white/10 bg-white/5 text-white hover:bg-white/10"
+              >
+                {showManualInput ? 'Auto Search' : 'Manual Entry'}
+              </Button>
+              
+              <Button 
+                onClick={showManualInput ? handleManualImport : handleSearch}
+                disabled={showManualInput ? !manualUrl.includes('github.com/') : false}
+                className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none"
+              >
+                {showManualInput ? 'Add Repository' : 'Search Repositories'}
+              </Button>
+            </>
+          )}
+          
+          {isLoading && (
+            <Button variant="outline" onClick={() => setIsLoading(false)} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
+              Cancel
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -1,178 +1,149 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import SearchBar from './SearchBar';
+import { useState } from 'react';
+import { Search, Star, Github, ArrowRight, Database } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { ArrowRight, Sparkles, Github, Zap, Search } from 'lucide-react';
+import SearchBar from './SearchBar';
 
 interface HeroProps {
   onSearch: (query: string) => void;
+  onAddProject: () => void;
+  totalProjects: number;
 }
 
-const Hero = ({ onSearch }: HeroProps) => {
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [isVisible, setIsVisible] = useState(false);
-  
-  const headlines = [
-    "Discover the Best AI Agents",
-    "Find Open Source AI Tools",
-    "Explore AI Agent Repositories",
-    "Build with AI Agents"
-  ];
-  
-  const popularSearches = [
-    "autonomous agent",
-    "llm",
-    "mcp",
-    "ai assistant",
-    "python agent",
-    "typescript agent"
-  ];
-  
-  useEffect(() => {
-    // Start the animation after component mount
-    setIsVisible(true);
-    
-    // Rotate headlines every 4 seconds
-    const interval = setInterval(() => {
-      setActiveIndex((current) => (current + 1) % headlines.length);
-    }, 4000);
-    
-    return () => clearInterval(interval);
-  }, []);
-  
-  const handlePopularSearch = (term: string) => {
-    onSearch(term);
-  };
-
+const Hero = ({ onSearch, onAddProject, totalProjects }: HeroProps) => {
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-background to-secondary/20 pt-20 pb-16 md:pt-32 md:pb-24">
+    <div className="relative py-6 px-4 bg-gradient-to-b from-[#0e1129] to-[#1e2344] text-white overflow-hidden">
       {/* Background decorative elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-primary/5 blur-3xl"></div>
-        <div className="absolute top-40 -left-20 h-60 w-60 rounded-full bg-secondary/10 blur-3xl"></div>
-        <div className="absolute bottom-20 right-20 h-40 w-40 rounded-full bg-primary/10 blur-3xl"></div>
+      <div className="absolute inset-0 overflow-hidden opacity-20">
+        <div className="absolute -top-24 -left-24 w-96 h-96 bg-indigo-500 rounded-full filter blur-3xl opacity-20"></div>
+        <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-purple-500 rounded-full filter blur-3xl opacity-20"></div>
       </div>
       
-      <div className="container relative z-10 px-4 md:px-6">
-        <div className="mx-auto max-w-4xl text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: isVisible ? 1 : 0, y: isVisible ? 0 : 20 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="mb-4 inline-flex items-center rounded-full border border-primary/20 bg-background px-3 py-1 text-sm font-medium text-primary shadow-sm"
-          >
-            <Sparkles className="mr-1 h-3.5 w-3.5" />
-            <span>AI Agent Directory</span>
-          </motion.div>
-          
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="relative h-[120px] md:h-[150px] mb-4 overflow-hidden"
-          >
-            <AnimatePresence mode="wait">
-              <motion.h1
-                key={activeIndex}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.5 }}
-                className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl md:text-6xl"
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col md:flex-row items-center gap-6">
+          {/* Left side: Hero content */}
+          <div className="w-full md:w-1/2 text-center md:text-left space-y-3">
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="inline-block px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm text-xs font-medium mb-1"
+            >
+              <span className="text-indigo-300">✨ The #1 Open Source AI Agents and MCP Server Directory</span>
+            </motion.div>
+            
+            <motion.h1 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+              className="text-2xl font-bold text-white tracking-tight leading-tight"
+            >
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400">Open Source AI Agents and MCP Servers</span> for your vibe coding project
+            </motion.h1>
+            
+            <motion.p 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.2 }}
+              className="text-sm text-white/70 max-w-lg"
+            >
+              An open-source project helping developers access and integrate AI agents and MCP servers into their workflow.
+            </motion.p>
+            
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.3 }}
+              className="flex flex-wrap justify-center md:justify-start gap-2 mt-3"
+            >
+              <Button 
+                onClick={onAddProject} 
+                size="sm"
+                className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none shadow-md"
               >
-                {headlines[activeIndex]}
-              </motion.h1>
-            </AnimatePresence>
-          </motion.div>
+                Add Project <ArrowRight className="ml-1 h-3.5 w-3.5" />
+              </Button>
+              
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="border-white/20 bg-white/5 hover:bg-white/10 text-white"
+                onClick={() => window.open('https://github.com/AgentMCP/ai-agent-directory', '_blank')}
+              >
+                <Github className="mr-1 h-3.5 w-3.5" /> Star on GitHub
+              </Button>
+            </motion.div>
+            
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.4 }}
+              className="flex items-center justify-center md:justify-start gap-4 text-xs text-white/60 mt-2"
+            >
+              <div className="flex items-center">
+                <Database className="h-2 w-2 mr-0.5 text-indigo-400" />
+                <span className="text-[10px] font-medium border-b border-indigo-400/30 pb-0.5">{totalProjects}+ Open Source AI Agent Projects</span>
+              </div>
+            </motion.div>
+          </div>
           
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: isVisible ? 1 : 0, y: isVisible ? 0 : 20 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
-            className="mb-8 text-lg text-muted-foreground md:text-xl"
-          >
-            Explore a curated collection of AI agents, tools, and frameworks to supercharge your projects.
-          </motion.p>
-          
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: isVisible ? 1 : 0, y: isVisible ? 0 : 20 }}
-            transition={{ duration: 0.5, delay: 0.6 }}
-            className="mx-auto mb-8 max-w-xl"
-          >
-            <SearchBar onSearch={onSearch} />
-          </motion.div>
-          
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: isVisible ? 1 : 0, y: isVisible ? 0 : 20 }}
-            transition={{ duration: 0.5, delay: 0.8 }}
-            className="mb-10"
-          >
-            <div className="flex flex-wrap items-center justify-center gap-2 text-sm text-muted-foreground">
-              <span className="flex items-center">
-                <Search className="mr-1 h-3.5 w-3.5" />
-                Popular:
-              </span>
-              {popularSearches.map((term, index) => (
-                <Badge
-                  key={index}
-                  variant="outline"
-                  className="cursor-pointer hover:bg-secondary/50 transition-colors border-primary/20"
-                  onClick={() => handlePopularSearch(term)}
+          {/* Right side: Search and Directory Preview */}
+          <div className="w-full md:w-1/2 space-y-4">
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="w-full"
+            >
+              <SearchBar onSearch={onSearch} isCompact={true} />
+            </motion.div>
+            
+            {/* Directory Preview */}
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+              className="bg-[#1a1f36]/50 backdrop-blur-sm rounded-lg border border-white/10 p-3 shadow-xl"
+            >
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold text-white flex items-center">
+                  <Star className="h-3 w-3 mr-1 text-yellow-400" />
+                  Popular AI Agents
+                </h3>
+                <Button 
+                  variant="link" 
+                  className="text-indigo-400 hover:text-indigo-300 p-0 h-auto text-xs"
+                  onClick={() => document.getElementById('directory')?.scrollIntoView({ behavior: 'smooth' })}
                 >
-                  {term}
-                </Badge>
-              ))}
-            </div>
-          </motion.div>
-          
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: isVisible ? 1 : 0, y: isVisible ? 0 : 20 }}
-            transition={{ duration: 0.5, delay: 1 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4"
-          >
-            <Button
-              size="lg"
-              className="group"
-              onClick={() => {
-                const directorySection = document.getElementById('directory');
-                if (directorySection) {
-                  directorySection.scrollIntoView({ behavior: 'smooth' });
-                }
-              }}
-            >
-              Explore Directory
-              <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="gap-2"
-              onClick={() => window.open('https://github.com/AgentMCP/ai-agent-directory', '_blank')}
-            >
-              <Github className="h-4 w-4" />
-              View on GitHub
-            </Button>
-          </motion.div>
+                  View All <ArrowRight className="ml-1 h-3 w-3" />
+                </Button>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2">
+                {/* Preview Cards - Just showing 4 examples */}
+                {[
+                  { name: 'Auto-GPT', stars: '153k', language: 'Python' },
+                  { name: 'BabyAGI', stars: '17.7k', language: 'Python' },
+                  { name: 'AgentGPT', stars: '28.1k', language: 'TypeScript' },
+                  { name: 'LangChain', stars: '77k', language: 'Python' }
+                ].map((agent, index) => (
+                  <div key={index} className="bg-[#0e1129] rounded-md p-2 border border-white/5 hover:border-indigo-500/30 transition-colors cursor-pointer">
+                    <h4 className="font-medium text-white text-xs truncate">{agent.name}</h4>
+                    <div className="flex items-center justify-between mt-1 text-xs">
+                      <span className="text-indigo-400 text-[10px]">{agent.language}</span>
+                      <div className="flex items-center text-[10px] text-yellow-400">
+                        <Star className="h-2 w-2 mr-0.5" />
+                        {agent.stars}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </div>
         </div>
       </div>
-      
-      {/* Bottom wave decoration */}
-      <div className="absolute bottom-0 left-0 right-0">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 1440 80"
-          className="w-full h-auto fill-background"
-          preserveAspectRatio="none"
-        >
-          <path
-            d="M0,64L80,58.7C160,53,320,43,480,42.7C640,43,800,53,960,53.3C1120,53,1280,43,1360,37.3L1440,32L1440,80L1360,80C1280,80,1120,80,960,80C800,80,640,80,480,80C320,80,160,80,80,80L0,80Z"
-          ></path>
-        </svg>
-      </div>
-    </section>
+    </div>
   );
 };
 

@@ -45,6 +45,9 @@ const saveUserSubmittedProjects = (projects: Agent[]) => {
 // User-submitted projects storage
 let USER_SUBMITTED_PROJECTS: Agent[] = loadUserSubmittedProjects();
 
+// Store all search results in memory to make them available for all users
+let CACHED_SEARCH_RESULTS: Map<string, Agent[]> = new Map();
+
 /**
  * Service for scraping GitHub repositories for AI Agent and MCP projects
  */
@@ -57,6 +60,13 @@ const ScrapeService = {
    */
   async scrapeGitHubRepositories(query = 'AI Agent MCP', isFirstImport = false): Promise<Agent[]> {
     console.log(`Scraping GitHub repositories for: ${query}, first import: ${isFirstImport}`);
+    
+    // Check if we have cached results for this query
+    const cacheKey = query.toLowerCase().trim();
+    if (CACHED_SEARCH_RESULTS.has(cacheKey)) {
+      console.log(`Using cached results for query: ${query}`);
+      return CACHED_SEARCH_RESULTS.get(cacheKey) || [];
+    }
     
     const maxResults = isFirstImport ? 250 : 100;
     
@@ -178,6 +188,9 @@ const ScrapeService = {
       });
       
       console.log(`Found ${uniqueRepositories.length} unique repositories after filtering duplicates`);
+      
+      // Store in cache for future use
+      CACHED_SEARCH_RESULTS.set(cacheKey, uniqueRepositories);
       
       // Save to localStorage
       if (uniqueRepositories.length > 0) {

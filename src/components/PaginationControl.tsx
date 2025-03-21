@@ -1,5 +1,6 @@
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { motion } from "framer-motion";
 
 interface PaginationControlProps {
   currentPage: number;
@@ -43,22 +44,29 @@ const PaginationControl = ({ currentPage, totalPages, onPageChange }: Pagination
   };
 
   return (
-    <div className="flex justify-center">
-      <div className="flex items-center gap-1">
+    <div className="flex justify-center my-6">
+      <motion.div 
+        className="flex items-center gap-1.5 p-1.5 bg-[#1a1f36]/60 backdrop-blur-sm rounded-full border border-white/10"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
         {currentPage > 1 && (
-          <button
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={() => onPageChange(currentPage - 1)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 hover:border-primary hover:text-primary transition-colors"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 text-white transition-colors"
             aria-label="Go to previous page"
           >
             <ChevronLeft className="h-4 w-4" />
-          </button>
+          </motion.button>
         )}
         
         {getPageNumbers().map((page, index) => {
           if (page === 'ellipsis-start' || page === 'ellipsis-end') {
             return (
-              <span key={`ellipsis-${index}`} className="flex h-9 w-9 items-center justify-center text-gray-500">
+              <span key={`ellipsis-${index}`} className="flex h-8 w-8 items-center justify-center text-white/50">
                 ...
               </span>
             );
@@ -67,32 +75,36 @@ const PaginationControl = ({ currentPage, totalPages, onPageChange }: Pagination
           const isActive = currentPage === page;
           
           return (
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               key={index}
               onClick={() => onPageChange(page as number)}
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-sm transition-colors ${
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-full text-sm transition-colors ${
                 isActive 
-                  ? 'bg-primary text-white' 
-                  : 'hover:bg-gray-100'
+                  ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-md shadow-indigo-500/20' 
+                  : 'text-white/80 hover:bg-white/10'
               }`}
               aria-label={`Go to page ${page}`}
               aria-current={isActive ? 'page' : undefined}
             >
               {page}
-            </button>
+            </motion.button>
           );
         })}
         
         {currentPage < totalPages && (
-          <button
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={() => onPageChange(currentPage + 1)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 hover:border-primary hover:text-primary transition-colors"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 text-white transition-colors"
             aria-label="Go to next page"
           >
             <ChevronRight className="h-4 w-4" />
-          </button>
+          </motion.button>
         )}
-      </div>
+      </motion.div>
     </div>
   );
 };

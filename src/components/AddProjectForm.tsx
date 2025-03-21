@@ -10,9 +10,14 @@ import * as z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from './ui/use-toast';
 import { Agent } from '../types';
+import { Plus, Sparkles, Github, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface AddProjectFormProps {
-  onProjectAdded?: (agent: Agent) => void;
+  onProjectAdded?: (url: string) => void;
+  onCancel?: () => void;
+  onClose?: () => void;
+  showButton?: boolean;
 }
 
 const formSchema = z.object({
@@ -23,7 +28,7 @@ const formSchema = z.object({
     }),
 });
 
-const AddProjectForm = ({ onProjectAdded }: AddProjectFormProps) => {
+const AddProjectForm = ({ onProjectAdded, onCancel, onClose, showButton = true }: AddProjectFormProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -37,30 +42,24 @@ const AddProjectForm = ({ onProjectAdded }: AddProjectFormProps) => {
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     try {
-      const result = await GitHubService.addProjectFromGitHub(values.githubUrl);
-      
-      if (result.success) {
+      if (onProjectAdded) {
+        onProjectAdded(values.githubUrl);
+      } else {
+        const result = await GitHubService.addProject(values.githubUrl);
+        
         toast({
           title: "Success",
           description: "Project added to the directory successfully",
         });
-        if (onProjectAdded) {
-          onProjectAdded(result.agent);
-        }
+        
         setIsOpen(false);
         form.reset();
-      } else {
-        toast({
-          title: "Error",
-          description: result.error || "Failed to add project. Repository must contain 'AI agent' or 'MCP' in its description.",
-          variant: "destructive",
-        });
       }
     } catch (error) {
       console.error('Error adding project:', error);
       toast({
         title: "Error",
-        description: "Failed to add project. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to add project. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -68,50 +67,110 @@ const AddProjectForm = ({ onProjectAdded }: AddProjectFormProps) => {
     }
   };
 
+  const handleCancel = () => {
+    form.reset();
+    if (onCancel) {
+      onCancel();
+    } else {
+      setIsOpen(false);
+    }
+  };
+
+  const formContent = (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="githubUrl"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-white/90">GitHub Repository URL</FormLabel>
+              <FormControl>
+                <div className="relative">
+                  <Github className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/50" />
+                  <Input 
+                    placeholder="https://github.com/username/repository" 
+                    {...field} 
+                    disabled={isLoading}
+                    className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-white/50 focus:border-indigo-500"
+                  />
+                </div>
+              </FormControl>
+              <FormDescription className="text-white/60">
+                Enter the URL of a GitHub repository containing an AI agent project.
+              </FormDescription>
+              <FormMessage className="text-red-400" />
+            </FormItem>
+          )}
+        />
+        
+        <div className="flex justify-end gap-2 pt-2">
+          <Button 
+            type="button" 
+            variant="outline" 
+            onClick={handleCancel}
+            disabled={isLoading}
+            className="border-white/10 bg-white/5 text-white hover:bg-white/10"
+          >
+            Cancel
+          </Button>
+          <Button 
+            type="submit" 
+            disabled={isLoading}
+            className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none"
+          >
+            {isLoading ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Adding...
+              </span>
+            ) : 'Add Project'}
+          </Button>
+        </div>
+      </form>
+    </Form>
+  );
+
+  if (!showButton) {
+    return formContent;
+  }
+
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" className="flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          Add Project
+    <>
+      <motion.div
+        whileHover={{ scale: 1.05 }}
+        transition={{ type: "spring", stiffness: 400, damping: 10 }}
+      >
+        <Button 
+          onClick={() => setIsOpen(true)} 
+          variant="outline" 
+          size="lg"
+          className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none shadow-md flex items-center gap-2"
+        >
+          <Plus className="h-4 w-4" /> Add Project
         </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Add AI Agent Project</DialogTitle>
-          <DialogDescription>
-            Enter a GitHub repository URL to add it to the directory. The repository should be an AI agent project.
-          </DialogDescription>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-            <FormField
-              control={form.control}
-              name="githubUrl"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>GitHub Repository URL</FormLabel>
-                  <FormControl>
-                    <Input placeholder="https://github.com/username/repository" {...field} />
-                  </FormControl>
-                  <FormDescription>
-                    Repository must contain 'AI agent' or 'MCP' in its description.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <DialogFooter>
-              <Button type="submit" disabled={isLoading}>
-                {isLoading ? 'Adding...' : 'Add Project'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+      </motion.div>
+      
+      <Dialog open={isOpen} onOpenChange={(open) => {
+        if (!open && onClose) {
+          onClose();
+        }
+        setIsOpen(open);
+      }}>
+        <DialogContent className="bg-[#1a1f36] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-indigo-400" />
+              Add AI Agent Project
+            </DialogTitle>
+            <DialogDescription className="text-white/70">
+              Add a GitHub repository to the AI Agent Directory.
+            </DialogDescription>
+          </DialogHeader>
+          {formContent}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
