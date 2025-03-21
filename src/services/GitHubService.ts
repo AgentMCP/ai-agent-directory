@@ -276,16 +276,41 @@ function removeDuplicates(projects: Agent[]): Agent[] {
   });
 }
 
-// Get all projects from server storage
+// Get all projects from all sources
 function getAllProjects(): Agent[] {
-  // Get server projects
-  const serverProjects = serverStorage.getAllProjects();
+  console.log('getAllProjects called - combining all project sources');
   
-  // Combine with any projects that might only exist locally (during migration)
-  const allProjects = [...REAL_PROJECTS, ...serverProjects, ...USER_SUBMITTED_PROJECTS];
+  // Start with real projects which are hardcoded
+  console.log(`REAL_PROJECTS: ${REAL_PROJECTS.length}`);
+  
+  // Get server projects
+  const serverProjectsCount = serverStorage ? serverStorage.getAllProjects().length : 0;
+  console.log(`Server projects (count): ${serverProjectsCount}`);
+  
+  // Get user submitted projects
+  console.log(`USER_SUBMITTED_PROJECTS: ${USER_SUBMITTED_PROJECTS.length}`);
+  
+  // Combine all projects
+  const allProjects = [...REAL_PROJECTS, ...USER_SUBMITTED_PROJECTS];
+  
+  // Add unique server projects (that might not be in the other sources)
+  if (serverStorage) {
+    const serverProjects = serverStorage.getAllProjects();
+    for (const project of serverProjects) {
+      if (!allProjects.some(p => p.url === project.url)) {
+        allProjects.push(project);
+      }
+    }
+  }
+  
+  // Log the total count
+  console.log(`Total combined projects (before deduplication): ${allProjects.length}`);
   
   // Remove duplicates
-  return removeDuplicates(allProjects);
+  const uniqueProjects = removeDuplicates(allProjects);
+  console.log(`Final unique projects: ${uniqueProjects.length}`);
+  
+  return uniqueProjects;
 }
 
 class GitHubService {
@@ -297,25 +322,20 @@ class GitHubService {
         // Get all projects from the combined list
         const allProjects = getAllProjects();
         
-        setTimeout(() => {
-          // Filter out non-English projects for all users
-          const englishProjects = allProjects.filter(agent => 
-            !this.containsNonEnglishCharacters(agent.name) && 
-            !this.containsNonEnglishCharacters(agent.description)
-          );
-          
-          // Make sure we're returning at least 300 projects to all users
-          console.log(`Fetched ${englishProjects.length} agents from ${allProjects.length} total`);
-          
-          // Cache the results in memory for faster access
-          if (typeof window !== 'undefined') {
-            // Use a safe approach to store cache data
-            window.__AGENT_CACHE__ = window.__AGENT_CACHE__ || {};
-            window.__AGENT_CACHE__.agents = englishProjects;
-          }
-          
-          resolve(englishProjects);
-        }, 300); // Reduced timeout for faster loading
+        console.log(`Fetching all agents (${allProjects.length} total)`);
+        
+        // Filter out non-English projects for all users
+        const englishProjects = allProjects.filter(agent => 
+          !this.containsNonEnglishCharacters(agent.name) && 
+          !this.containsNonEnglishCharacters(agent.description)
+        );
+        
+        // Make sure we're returning at least 300 projects to all users
+        console.log(`Fetched ${englishProjects.length} agents from ${allProjects.length} total`);
+        
+        // Ensure all browsers have the same data by not using browser-specific features
+        // that might be handled differently in Safari vs Chrome
+        resolve(englishProjects);
       } catch (error) {
         console.error('Error in fetchAgents:', error);
         // If there's an error, return the REAL_PROJECTS as a fallback to ensure users always see content
@@ -668,11 +688,12 @@ class GitHubService {
 
   static getAgentData = async (): Promise<{timestamp: string, agents: Agent[]}> => {
     try {
+      // Ensure we get all agents consistently across browsers
+      console.log('Getting agent data...');
       const agents = await GitHubService.fetchAgents();
       const timestamp = new Date().toISOString();
-      if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem('lastAgentRefresh', timestamp);
-      }
+      
+      console.log(`Returning ${agents.length} agents from getAgentData`);
       return { timestamp, agents };
     } catch (error) {
       console.error('Error in getAgentData:', error);
@@ -682,4 +703,4 @@ class GitHubService {
   };
 }
 
-export { GitHubService };
+export { GitHubService, REAL_PROJECTS };

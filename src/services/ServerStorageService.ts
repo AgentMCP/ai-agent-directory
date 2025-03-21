@@ -11,7 +11,6 @@ const PROJECTS_ENDPOINT = `${API_BASE_URL}/projects`;
  */
 export class ServerStorageService {
   private static instance: ServerStorageService;
-  private serverProjects: Agent[] = [];
   
   // Singleton pattern to ensure consistency across the application
   public static getInstance(): ServerStorageService {
@@ -26,11 +25,7 @@ export class ServerStorageService {
    */
   public async initialize(): Promise<void> {
     console.log('Initializing ServerStorageService...');
-    try {
-      await this.fetchAllProjects();
-    } catch (error) {
-      console.error('Failed to initialize ServerStorageService:', error);
-    }
+    // Nothing to do here, as we'll always get the full list from GitHubService
   }
 
   /**
@@ -38,15 +33,11 @@ export class ServerStorageService {
    */
   public async fetchAllProjects(): Promise<Agent[]> {
     try {
-      // In a real implementation, this would be an API call
-      // For now, we'll simulate server storage with this in-memory array
-      if (this.serverProjects.length === 0) {
-        // Initialize with the default projects if empty
-        this.serverProjects = await GitHubService.getAllProjects();
-      }
+      // Always get the full list of projects directly from GitHubService
+      const allProjects = await GitHubService.fetchAgents();
       
-      console.log(`Fetched ${this.serverProjects.length} projects from server`);
-      return this.serverProjects;
+      console.log(`Fetched ${allProjects.length} projects from GitHubService`);
+      return allProjects;
     } catch (error) {
       console.error('Error fetching projects from server:', error);
       return [];
@@ -58,20 +49,10 @@ export class ServerStorageService {
    */
   public async addProject(project: Agent): Promise<boolean> {
     try {
-      // Ensure we're not adding duplicates
-      const isDuplicate = this.serverProjects.some(p => p.url === project.url);
-      if (isDuplicate) {
-        console.log(`Project ${project.name} already exists on server`);
-        return false;
-      }
-
-      // In a real implementation, this would be a POST request to the server
-      // For demonstration, we'll add it to our in-memory store
-      this.serverProjects.push(project);
-      console.log(`Added project ${project.name} to server storage`);
-      
-      // Notify the GitHubService that a new project was added
-      await this.notifyProjectAdded(project);
+      // Since we're not managing state directly, just pass to GitHubService
+      // The project will be added to the USER_SUBMITTED_PROJECTS in GitHubService
+      await GitHubService.addProject(project.url);
+      console.log(`Added project ${project.name} via GitHubService`);
       return true;
     } catch (error) {
       console.error('Error adding project to server:', error);
@@ -87,20 +68,15 @@ export class ServerStorageService {
       let addedCount = 0;
       
       for (const project of projects) {
-        const isDuplicate = this.serverProjects.some(p => p.url === project.url);
-        if (!isDuplicate) {
-          this.serverProjects.push(project);
+        try {
+          await GitHubService.addProject(project.url);
           addedCount++;
+        } catch (error) {
+          console.error(`Failed to add project ${project.name}:`, error);
         }
       }
       
-      console.log(`Added ${addedCount} projects to server storage`);
-      
-      // Notify the service that projects were added
-      if (addedCount > 0) {
-        await this.notifyProjectsAdded(addedCount);
-      }
-      
+      console.log(`Added ${addedCount} projects via GitHubService`);
       return { success: true, count: addedCount };
     } catch (error) {
       console.error('Error adding projects to server:', error);
@@ -112,23 +88,20 @@ export class ServerStorageService {
    * Get all projects including user submissions
    */
   public getAllProjects(): Agent[] {
-    return this.serverProjects;
-  }
-
-  /**
-   * Simulate server-side notification when a project is added
-   */
-  private async notifyProjectAdded(project: Agent): Promise<void> {
-    console.log(`Server received new project: ${project.name}`);
-    // In a real implementation, this could trigger events like webhooks
-    // or update connected clients via websockets
-  }
-
-  /**
-   * Simulate server-side notification when multiple projects are added
-   */
-  private async notifyProjectsAdded(count: number): Promise<void> {
-    console.log(`Server received ${count} new projects`);
+    try {
+      // Return the server projects safely without creating a circular dependency
+      // Use an import from GitHubService.REAL_PROJECTS directly
+      const moduleExports = require('./GitHubService');
+      if (moduleExports && moduleExports.REAL_PROJECTS) {
+        console.log(`Returning ${moduleExports.REAL_PROJECTS.length} real projects from ServerStorageService`);
+        return moduleExports.REAL_PROJECTS;
+      }
+      console.warn('Could not get REAL_PROJECTS');
+      return [];
+    } catch (error) {
+      console.error('Error in getAllProjects:', error);
+      return [];
+    }
   }
 }
 

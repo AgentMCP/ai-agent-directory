@@ -78,6 +78,8 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
           throw new Error('No agent data returned');
         }
         
+        console.log(`Successfully loaded ${data.agents.length} agents from GitHubService`);
+        
         // Extract unique languages and licenses for filtering
         const uniqueLanguages = Array.from(new Set(
           data.agents
