@@ -1,4 +1,3 @@
-
 export interface Agent {
   id: string;
   name: string;
@@ -19,6 +18,7 @@ export type SortOption = 'stars' | 'updated' | 'forks';
 
 export interface FilterOptions {
   language: string | null;
+  license: string | null;
   sort: SortOption;
   searchQuery: string;
 }

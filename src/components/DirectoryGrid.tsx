@@ -28,8 +28,10 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [languages, setLanguages] = useState<string[]>([]);
+  const [licenses, setLicenses] = useState<string[]>([]);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     language: null,
+    license: null,
     sort: 'stars',
     searchQuery: initialSearchQuery,
   });
@@ -75,15 +77,22 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
           throw new Error('No agent data returned');
         }
         
-        // Extract unique languages for filtering
+        // Extract unique languages and licenses for filtering
         const uniqueLanguages = Array.from(new Set(
           data.agents
             .map(agent => agent.language)
             .filter(Boolean)
         )).sort();
         
-        console.log(`Loaded ${data.agents.length} agents with ${uniqueLanguages.length} languages`);
+        const uniqueLicenses = Array.from(new Set(
+          data.agents
+            .map(agent => agent.license)
+            .filter(Boolean)
+        )).sort();
+        
+        console.log(`Loaded ${data.agents.length} agents with ${uniqueLanguages.length} languages and ${uniqueLicenses.length} licenses`);
         setLanguages(uniqueLanguages);
+        setLicenses(uniqueLicenses);
         setAgents(data.agents);
         setFilteredAgents(data.agents);
         
@@ -102,6 +111,7 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
         setAgents([]);
         setFilteredAgents([]);
         setLanguages([]);
+        setLicenses([]);
       } finally {
         setIsLoading(false);
       }
@@ -135,8 +145,9 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
           const nameMatch = agent.name?.toLowerCase().includes(searchQuery);
           const descMatch = agent.description?.toLowerCase().includes(searchQuery);
           const langMatch = agent.language?.toLowerCase().includes(searchQuery);
+          const licenseMatch = agent.license?.toLowerCase().includes(searchQuery);
           
-          return nameMatch || descMatch || langMatch;
+          return nameMatch || descMatch || langMatch || licenseMatch;
         });
         
         console.log(`Search filter applied, ${filtered.length} agents remaining`);
@@ -153,6 +164,17 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
         );
         
         console.log(`Language filter applied, ${filtered.length} agents remaining`);
+      }
+      
+      // Then apply license filter
+      if (filterOptions.license) {
+        console.log("Applying license filter:", filterOptions.license);
+        
+        filtered = filtered.filter(agent => 
+          agent.license === filterOptions.license
+        );
+        
+        console.log(`License filter applied, ${filtered.length} agents remaining`);
       }
       
       // Finally sort
@@ -185,15 +207,22 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
   };
 
   const handleSearch = (query: string) => {
+    console.log("Search query changed:", query);
     setPage(1);
     setHasMore(true);
-    setFilterOptions({ ...filterOptions, searchQuery: query });
+    setFilterOptions({ ...filterOptions, searchQuery: query, license: null });
   };
 
   const handleLanguageChange = (language: string | null) => {
     setPage(1);
     setHasMore(true);
     setFilterOptions({ ...filterOptions, language });
+  };
+
+  const handleLicenseChange = (license: string | null) => {
+    setPage(1);
+    setHasMore(true);
+    setFilterOptions({ ...filterOptions, license });
   };
 
   const handleSortChange = (sort: SortOption) => {
@@ -375,13 +404,31 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
               defaultValue="all"
             >
               <SelectTrigger className="w-auto border-white/20 bg-white/5 text-white text-xs h-7 px-2 rounded-sm">
-                <SelectValue placeholder="Language" />
+                <SelectValue placeholder="Languages" />
               </SelectTrigger>
               <SelectContent className="bg-[#1a1f36] border-white/10 text-white text-xs">
                 <SelectItem value="all" className="text-xs">All Languages</SelectItem>
                 {languages.map((lang) => (
                   <SelectItem key={lang} value={lang} className="text-xs">
                     {lang}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <Select
+              value={filterOptions.license}
+              onValueChange={handleLicenseChange}
+              defaultValue="all"
+            >
+              <SelectTrigger className="w-auto border-white/20 bg-white/5 text-white text-xs h-7 px-2 rounded-sm">
+                <SelectValue placeholder="License" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#1a1f36] border-white/10 text-white text-xs">
+                <SelectItem value="all" className="text-xs">All Licenses</SelectItem>
+                {licenses.map((license) => (
+                  <SelectItem key={license} value={license} className="text-xs">
+                    {license}
                   </SelectItem>
                 ))}
               </SelectContent>

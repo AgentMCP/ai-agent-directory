@@ -41,6 +41,7 @@ const AgentCard = ({ agent }: AgentCardProps) => {
     : agent.description;
   
   const languageColor = getLanguageColor(agent.language);
+  const licenseColor = getLicenseColor(agent.license);
   
   return (
     <motion.div 
@@ -99,8 +100,9 @@ const AgentCard = ({ agent }: AgentCardProps) => {
             <Badge 
               variant="outline" 
               className="text-xs py-0 px-2 bg-white/5 text-white/80 border-white/10"
+              style={{ borderColor: `${licenseColor}30`, backgroundColor: `${licenseColor}10` }}
             >
-              <Shield className="w-3 h-3 mr-1" />
+              <Shield className="w-3 h-3 mr-1" style={{ color: licenseColor }} />
               {agent.license}
             </Badge>
           )}
@@ -151,6 +153,23 @@ function getLanguageColor(language: string): string {
   };
   
   return colors[language] || '#8257e5'; // Default purple color
+}
+
+function getLicenseColor(license: string): string {
+  const colors: Record<string, string> = {
+    'MIT': '#2da44e',
+    'Apache-2.0': '#e05d44',
+    'GPL-3.0': '#a31f34',
+    'BSD-3-Clause': '#3572A5',
+    'AGPL-3.0': '#884ea0',
+    'MPL-2.0': '#f39c12',
+    'LGPL-3.0': '#8e44ad',
+    'CC-BY-4.0': '#3498db',
+    'Unlicense': '#7f8c8d',
+    'ISC': '#27ae60',
+  };
+  
+  return colors[license] || '#6c5ce7'; // Default indigo color
 }
 
 export default AgentCard;

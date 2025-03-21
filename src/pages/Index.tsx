@@ -5,7 +5,6 @@ import DirectoryGrid from '../components/DirectoryGrid';
 import { GitHubService } from '../services/GitHubService';
 import { Layers, Heart, Github, Sparkles } from 'lucide-react';
 import AddProjectModal from '../components/AddProjectModal';
-import TestMemoryCache from '../components/TestMemoryCache';
 
 const Index = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -49,11 +48,6 @@ const Index = () => {
         
         <div id="directory" className="max-w-7xl mx-auto px-4 py-6">
           <DirectoryGrid initialSearchQuery={searchQuery} />
-        </div>
-        
-        {/* Test Memory Cache Component */}
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <TestMemoryCache />
         </div>
         
         <section id="about-section" className="py-16 bg-gradient-to-b from-[#0e1129] to-[#1e2344] text-white">
