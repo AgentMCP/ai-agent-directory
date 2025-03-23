@@ -12,11 +12,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /**
  * SupabaseService - Handles storing and retrieving projects from Supabase
- * Creates the projects table if it doesn't exist
+ * Falls back to REAL_PROJECTS when Supabase is unavailable
  */
 export class SupabaseService {
   private static instance: SupabaseService;
-  private isTableCreated: boolean = false;
+  private isSupabaseAvailable: boolean = true;
 
   // Singleton pattern to ensure consistency across the application
   public static getInstance(): SupabaseService {
@@ -28,60 +28,13 @@ export class SupabaseService {
 
   private constructor() {
     console.log('SupabaseService initialized');
-    this.initializeTable();
-  }
-
-  /**
-   * Create the projects table if it doesn't exist
-   */
-  private async createProjectsTable(): Promise<void> {
-    try {
-      console.log('Creating projects table in Supabase...');
-      
-      // Create the table using Supabase SQL
-      const { error } = await supabase.rpc('create_projects_table');
-      
-      if (error) {
-        console.error('Error creating projects table:', error);
-        
-        // Try an alternative approach with direct SQL
-        const { error: sqlError } = await supabase.rpc('execute_sql', {
-          sql_query: `
-            CREATE TABLE IF NOT EXISTS ${PROJECTS_TABLE} (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              description TEXT,
-              stars INTEGER,
-              forks INTEGER,
-              url TEXT UNIQUE NOT NULL,
-              owner TEXT,
-              avatar TEXT,
-              language TEXT,
-              updated TEXT,
-              topics JSONB,
-              license TEXT
-            );
-          `
-        });
-        
-        if (sqlError) {
-          console.error('Error executing SQL to create table:', sqlError);
-          throw sqlError;
-        }
-      }
-      
-      this.isTableCreated = true;
-      console.log('Successfully created projects table in Supabase');
-    } catch (error) {
-      console.error('Failed to create projects table:', error);
-      throw error;
-    }
+    this.checkSupabaseAvailability();
   }
 
   /**
    * Check if Supabase projects table exists
    */
-  private async checkTableExists(): Promise<boolean> {
+  private async checkSupabaseAvailability(): Promise<void> {
     try {
       // Check if table exists by trying to get a single row
       const { error } = await supabase
@@ -89,71 +42,91 @@ export class SupabaseService {
         .select('id')
         .limit(1);
       
-      if (error && error.code === '42P01') {
-        console.warn('Projects table does not exist in Supabase');
-        return false;
+      if (error) {
+        // Table doesn't exist or other Supabase error
+        console.warn('Supabase error detected, using REAL_PROJECTS fallback:', error);
+        this.isSupabaseAvailable = false;
+      } else {
+        console.log('Supabase projects table exists and is available');
+        this.isSupabaseAvailable = true;
       }
-      
-      return !error;
     } catch (error) {
-      console.error('Failed to check if table exists:', error);
-      return false;
+      console.error('Failed to check Supabase availability:', error);
+      this.isSupabaseAvailable = false;
     }
   }
 
   /**
-   * Initialize and ensure access to project data
+   * Initialize and ensure project data is available
    */
   public async initializeTable(): Promise<void> {
-    try {
-      // Check if table exists
-      const tableExists = await this.checkTableExists();
-      
-      if (!tableExists) {
-        // Create the table
-        await this.createProjectsTable();
+    // Force a fresh check of Supabase availability
+    await this.checkSupabaseAvailability();
+    
+    // If Supabase is available, make sure it has data
+    if (this.isSupabaseAvailable) {
+      try {
+        // Check if table has data
+        const { data, error } = await supabase
+          .from(PROJECTS_TABLE)
+          .select('id')
+          .limit(1);
         
-        // Seed with initial data if needed
-        const initialProjects = REAL_PROJECTS || [];
-        if (initialProjects.length > 0) {
-          await this.addProjects(initialProjects);
-          console.log(`Seeded projects table with ${initialProjects.length} initial projects`);
+        if (!error && (!data || data.length === 0)) {
+          console.log('Projects table exists but is empty, seeding with REAL_PROJECTS');
+          
+          // Table is empty, add seed data
+          if (REAL_PROJECTS && REAL_PROJECTS.length > 0) {
+            const { error: seedError } = await supabase
+              .from(PROJECTS_TABLE)
+              .insert(REAL_PROJECTS);
+            
+            if (seedError) {
+              console.error('Error seeding projects table:', seedError);
+            } else {
+              console.log(`Seeded projects table with ${REAL_PROJECTS.length} initial projects`);
+            }
+          }
         }
-      } else {
-        console.log('Projects table already exists in Supabase');
-        this.isTableCreated = true;
+      } catch (error) {
+        console.error('Error checking table data:', error);
       }
-    } catch (error) {
-      console.error('Failed to initialize table:', error);
     }
   }
 
   /**
-   * Get all projects from Supabase
+   * Get all projects from Supabase or fallback to REAL_PROJECTS
    */
   public async getAllProjects(): Promise<Agent[]> {
+    // If Supabase is not available, use REAL_PROJECTS
+    if (!this.isSupabaseAvailable) {
+      console.log(`Using REAL_PROJECTS fallback - returning ${REAL_PROJECTS.length} projects`);
+      return REAL_PROJECTS;
+    }
+    
     try {
       console.log('Fetching all projects from Supabase');
-      
-      // Make sure table exists first
-      if (!this.isTableCreated) {
-        await this.initializeTable();
-      }
-      
       const { data, error } = await supabase
         .from(PROJECTS_TABLE)
         .select('*');
 
       if (error) {
         console.error('Error fetching projects from Supabase:', error);
-        return [];
+        this.isSupabaseAvailable = false;
+        return REAL_PROJECTS;
       }
 
-      console.log(`Fetched ${data?.length || 0} projects from Supabase`);
-      return data || [];
+      if (!data || data.length === 0) {
+        console.log('No projects found in Supabase, returning REAL_PROJECTS');
+        return REAL_PROJECTS;
+      }
+
+      console.log(`Fetched ${data.length} projects from Supabase`);
+      return data;
     } catch (error) {
       console.error('Failed to fetch projects from Supabase:', error);
-      return [];
+      this.isSupabaseAvailable = false;
+      return REAL_PROJECTS;
     }
   }
 
@@ -161,13 +134,14 @@ export class SupabaseService {
    * Add a single project to Supabase
    */
   public async addProject(project: Agent): Promise<boolean> {
+    // If Supabase is not available, can't add project
+    if (!this.isSupabaseAvailable) {
+      console.warn('Supabase not available, cannot add project');
+      return false;
+    }
+    
     try {
       console.log('Adding project to Supabase:', project.name);
-      
-      // Make sure table exists first
-      if (!this.isTableCreated) {
-        await this.initializeTable();
-      }
       
       // First check if project already exists by URL
       const { data: existingData, error: checkError } = await supabase
@@ -208,13 +182,14 @@ export class SupabaseService {
    * Add multiple projects to Supabase
    */
   public async addProjects(projects: Agent[]): Promise<number> {
+    // If Supabase is not available, can't add projects
+    if (!this.isSupabaseAvailable) {
+      console.warn('Supabase not available, cannot add projects');
+      return 0;
+    }
+    
     try {
       console.log(`Adding ${projects.length} projects to Supabase`);
-      
-      // Make sure table exists first
-      if (!this.isTableCreated) {
-        await this.initializeTable();
-      }
       
       // Get existing URLs to avoid duplicates
       const { data: existingProjects, error: fetchError } = await supabase
@@ -265,16 +240,43 @@ export class SupabaseService {
   }
 
   /**
-   * Search for projects by query in Supabase
+   * Search for projects by query in Supabase or REAL_PROJECTS
    */
   public async searchProjects(query: string): Promise<Agent[]> {
+    // If Supabase is not available, search in REAL_PROJECTS
+    if (!this.isSupabaseAvailable) {
+      console.log('Searching projects in REAL_PROJECTS for:', query);
+      
+      if (!query || query.trim() === '') {
+        return REAL_PROJECTS;
+      }
+      
+      // Normalize query
+      const normalizedQuery = query.toLowerCase().trim();
+      
+      // Filter REAL_PROJECTS
+      const results = REAL_PROJECTS.filter(project => {
+        const name = project.name?.toLowerCase() || '';
+        const description = project.description?.toLowerCase() || '';
+        const language = project.language?.toLowerCase() || '';
+        const owner = project.owner?.toLowerCase() || '';
+        const topics = project.topics || [];
+        
+        return (
+          name.includes(normalizedQuery) ||
+          description.includes(normalizedQuery) ||
+          language.includes(normalizedQuery) ||
+          owner.includes(normalizedQuery) ||
+          topics.some(topic => topic.toLowerCase().includes(normalizedQuery))
+        );
+      });
+      
+      console.log(`Found ${results.length} matching projects in REAL_PROJECTS`);
+      return results;
+    }
+    
     try {
       console.log(`Searching for projects with query: "${query}"`);
-      
-      // Make sure table exists first
-      if (!this.isTableCreated) {
-        await this.initializeTable();
-      }
       
       if (!query || query.trim() === '') {
         return this.getAllProjects();
@@ -284,7 +286,6 @@ export class SupabaseService {
       const normalizedQuery = query.toLowerCase().trim();
       
       // Get all projects and filter on client side
-      // This is a workaround since Supabase might not support full text search in all plans
       const allProjects = await this.getAllProjects();
       
       // Filter by name, description, or other searchable fields
@@ -308,7 +309,8 @@ export class SupabaseService {
       return results;
     } catch (error) {
       console.error('Error searching projects:', error);
-      return [];
+      this.isSupabaseAvailable = false;
+      return this.searchProjects(query); // Recursive call using REAL_PROJECTS
     }
   }
 }

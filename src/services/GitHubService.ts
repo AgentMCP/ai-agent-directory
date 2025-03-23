@@ -1,7 +1,7 @@
 import { Agent } from '../types';
 import { supabaseService } from './SupabaseService';
 
-// Real data for AI Agent projects
+// Real data for AI Agent projects - exported for use as fallback
 export const REAL_PROJECTS: Agent[] = [
   {
     id: '1',
@@ -219,18 +219,15 @@ export const REAL_PROJECTS: Agent[] = [
 let USER_SUBMITTED_PROJECTS: Agent[] = [];
 
 /**
- * Get all projects from all sources (Supabase is the primary source)
+ * Get all projects from Supabase with fallback to REAL_PROJECTS
  */
 async function getAllProjects(): Promise<Agent[]> {
   try {
-    console.log('Getting all projects from Supabase...');
-    // Get projects from Supabase first
-    const projects = await supabaseService.getAllProjects();
-    console.log(`Fetched ${projects.length} projects from Supabase`);
-    return projects;
+    console.log('Getting all projects...');
+    return await supabaseService.getAllProjects();
   } catch (error) {
     console.error('Error getting all projects:', error);
-    return [];
+    return REAL_PROJECTS;
   }
 }
 
@@ -244,7 +241,7 @@ async function addUserSubmittedProjects(newProjects: Agent[]): Promise<void> {
       return;
     }
     
-    console.log(`Adding ${newProjects.length} user-submitted projects to Supabase`);
+    console.log(`Adding ${newProjects.length} user-submitted projects`);
     await supabaseService.addProjects(newProjects);
   } catch (error) {
     console.error('Error adding user-submitted projects:', error);
@@ -307,17 +304,15 @@ export class GitHubService {
   };
   
   /**
-   * Fetch all agents from Supabase
+   * Fetch all agents from Supabase with fallback
    */
   static async fetchAgents(): Promise<Agent[]> {
     try {
       console.log('Fetching all agents...');
-      
-      // Get agents from Supabase
-      return await supabaseService.getAllProjects();
+      return await getAllProjects();
     } catch (error) {
       console.error('Error fetching agents:', error);
-      return REAL_PROJECTS; // Last resort fallback to built-in data
+      return REAL_PROJECTS;
     }
   }
   
@@ -388,12 +383,13 @@ export class GitHubService {
     try {
       console.log('Initializing GitHubService...');
       
-      // Initialize Supabase and create table if needed
+      // Initialize Supabase table
       await supabaseService.initializeTable();
       
       console.log('GitHubService initialization complete');
     } catch (error) {
       console.error('Error initializing GitHubService:', error);
+      // Continue with fallback data
     }
   }
 }
