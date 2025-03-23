@@ -858,20 +858,12 @@ const ScrapeService = {
       console.error('Error loading saved projects from localStorage:', error);
     }
     
-    // Get real projects from GitHubService
-    let realProjects: Agent[] = [];
-    try {
-      // Import from GitHubService without creating circular dependency
-      const gitHubServiceModule = require('./GitHubService');
-      if (gitHubServiceModule.GitHubService && gitHubServiceModule.GitHubService.getAllProjects) {
-        realProjects = gitHubServiceModule.GitHubService.getAllProjects();
-      }
-    } catch (error) {
-      console.error('Error loading real projects from GitHubService:', error);
-    }
+    // We can't use GitHubService directly here since it's async
+    // Instead, just combine the local projects with the in-memory ones
+    // The actual data will be properly merged when added to Supabase
     
     // Combine all projects and remove duplicates
-    const allProjects = [...USER_SUBMITTED_PROJECTS, ...localStorageProjects, ...realProjects];
+    const allProjects = [...USER_SUBMITTED_PROJECTS, ...localStorageProjects];
     return removeDuplicates(allProjects);
   },
   

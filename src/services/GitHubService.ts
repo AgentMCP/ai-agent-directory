@@ -360,22 +360,34 @@ export class GitHubService {
   }
   
   /**
-   * Handle bulk project submission
+   * Submit projects from bulk import
    */
-  static async submitProjects(projects: Agent[]): Promise<Agent[]> {
+  static async submitProjects(projects: Agent[]): Promise<void> {
     try {
-      // Add projects to Supabase
-      const addedCount = await supabaseService.addProjects(projects);
-      console.log(`Added ${addedCount} projects to Supabase in bulk`);
+      if (!projects || projects.length === 0) {
+        console.log('No projects to submit');
+        return;
+      }
       
-      // Return the projects that were added
-      return projects;
+      console.log(`Submitting ${projects.length} projects to Supabase`);
+      await addUserSubmittedProjects(projects);
     } catch (error) {
-      console.error('Error submitting projects in bulk:', error);
-      return [];
+      console.error('Error submitting projects:', error);
     }
   }
   
+  /**
+   * Refresh agent data (used after bulk import)
+   */
+  static async refreshAgentData(): Promise<void> {
+    try {
+      console.log('Refreshing agent data...');
+      // No additional action needed as the data is now stored in Supabase
+    } catch (error) {
+      console.error('Error refreshing agent data:', error);
+    }
+  }
+
   /**
    * Initialize the data in the correct order
    */
