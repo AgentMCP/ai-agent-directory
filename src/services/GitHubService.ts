@@ -1,5 +1,5 @@
 import { Agent } from '../types';
-import { serverStorage } from './ServerStorageService';
+import { supabaseService } from './SupabaseService';
 
 // Real data for AI Agent projects
 const REAL_PROJECTS: Agent[] = [
@@ -220,44 +220,41 @@ let USER_SUBMITTED_PROJECTS: Agent[] = [];
 
 // Load saved projects from localStorage, but only as a fallback
 function loadSavedProjects() {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const savedProjects = localStorage.getItem('userSubmittedProjects');
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const savedProjects = window.localStorage.getItem('userSubmittedProjects');
       if (savedProjects) {
-        const parsedProjects = JSON.parse(savedProjects);
-        if (Array.isArray(parsedProjects)) {
-          console.log(`Found ${parsedProjects.length} locally saved projects. Syncing to server...`);
-          
-          // We'll add these to the server storage to ensure they're available globally
-          // This is a migration step - after this, we'll rely on the server storage
-          serverStorage.addProjects(parsedProjects);
-          
-          // Clear the local storage since we've moved to server storage
-          localStorage.removeItem('userSubmittedProjects');
-        }
+        USER_SUBMITTED_PROJECTS = JSON.parse(savedProjects);
+        console.log(`Loaded ${USER_SUBMITTED_PROJECTS.length} user-submitted projects from localStorage`);
+        
+        // Migrate projects to Supabase (only happens once)
+        migrateProjectsToSupabase(USER_SUBMITTED_PROJECTS);
       }
+    } catch (error) {
+      console.error('Error loading saved projects:', error);
     }
-  } catch (error) {
-    console.error('Error loading saved projects:', error);
   }
 }
 
 // We no longer need to save projects to localStorage
 // This is kept for compatibility but will be phased out
 function saveProjects() {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      // Instead of saving to localStorage, we ensure projects are in server storage
-      const projects = USER_SUBMITTED_PROJECTS;
-      if (projects.length > 0) {
-        serverStorage.addProjects(projects);
-        // Clear local cache after server sync
-        USER_SUBMITTED_PROJECTS = [];
-      }
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem('userSubmittedProjects', JSON.stringify(USER_SUBMITTED_PROJECTS));
+    } catch (error) {
+      console.error('Error saving projects:', error);
     }
-  } catch (error) {
-    console.error('Error during project sync:', error);
   }
+}
+
+// Migrate existing localStorage projects to Supabase
+async function migrateProjectsToSupabase(projects: Agent[]) {
+  if (projects.length === 0) return;
+  
+  console.log(`Migrating ${projects.length} projects from localStorage to Supabase`);
+  await supabaseService.addProjects(projects);
+  console.log('Migration to Supabase complete');
 }
 
 // Initialize by loading saved projects and migrating them to server storage
@@ -265,429 +262,81 @@ loadSavedProjects();
 
 // Function to remove duplicates from an array of projects
 function removeDuplicates(projects: Agent[]): Agent[] {
-  const seen = new Set();
-  return projects.filter(project => {
-    const key = project.url;
-    if (seen.has(key)) {
-      return false;
+  const urlMap = new Map<string, Agent>();
+  
+  for (const project of projects) {
+    if (project.url && !urlMap.has(project.url)) {
+      urlMap.set(project.url, project);
     }
-    seen.add(key);
-    return true;
-  });
+  }
+  
+  return Array.from(urlMap.values());
 }
 
 // Get all projects from all sources
-function getAllProjects(): Agent[] {
-  console.log('getAllProjects called - combining all project sources');
-  
-  // Start with real projects which are hardcoded
-  console.log(`REAL_PROJECTS: ${REAL_PROJECTS.length}`);
-  
-  // Get server projects
-  const serverProjectsCount = serverStorage ? serverStorage.getAllProjects().length : 0;
-  console.log(`Server projects (count): ${serverProjectsCount}`);
-  
-  // Get user submitted projects
-  console.log(`USER_SUBMITTED_PROJECTS: ${USER_SUBMITTED_PROJECTS.length}`);
-  
-  // Combine all projects
-  const allProjects = [...REAL_PROJECTS, ...USER_SUBMITTED_PROJECTS];
-  
-  // Add unique server projects (that might not be in the other sources)
-  if (serverStorage) {
-    const serverProjects = serverStorage.getAllProjects();
-    for (const project of serverProjects) {
-      if (!allProjects.some(p => p.url === project.url)) {
-        allProjects.push(project);
-      }
+async function getAllProjects(): Promise<Agent[]> {
+  try {
+    // First try to get projects from Supabase
+    const supabaseProjects = await supabaseService.getAllProjects();
+    
+    // If Supabase has projects, return those
+    if (supabaseProjects.length > 0) {
+      console.log(`Found ${supabaseProjects.length} projects in Supabase`);
+      return supabaseProjects;
     }
+    
+    // Fallback to local data if Supabase is empty
+    const allProjects = [...REAL_PROJECTS, ...USER_SUBMITTED_PROJECTS];
+    
+    // Remove duplicates
+    const uniqueProjects = removeDuplicates(allProjects);
+    console.log(`Returning ${uniqueProjects.length} combined projects (local fallback)`);
+    
+    // Save these to Supabase for next time
+    supabaseService.addProjects(uniqueProjects);
+    
+    return uniqueProjects;
+  } catch (error) {
+    console.error('Error getting all projects:', error);
+    // Ultimate fallback to local data only
+    return [...REAL_PROJECTS, ...USER_SUBMITTED_PROJECTS];
   }
-  
-  // Log the total count
-  console.log(`Total combined projects (before deduplication): ${allProjects.length}`);
-  
-  // Remove duplicates
-  const uniqueProjects = removeDuplicates(allProjects);
-  console.log(`Final unique projects: ${uniqueProjects.length}`);
-  
-  return uniqueProjects;
 }
 
 // Add projects from bulk import or form submission
-function addUserSubmittedProjects(newProjects: Agent[]) {
-  console.log(`Adding ${newProjects.length} new user-submitted projects`);
-  
-  // First add to USER_SUBMITTED_PROJECTS array in memory
-  USER_SUBMITTED_PROJECTS = [...USER_SUBMITTED_PROJECTS, ...newProjects];
-  console.log(`USER_SUBMITTED_PROJECTS now has ${USER_SUBMITTED_PROJECTS.length} projects`);
-  
-  // Also add to server storage to ensure they persist
-  serverStorage.addProjects(newProjects);
-  
-  // Save to localStorage as a backup (will be migrated on next load)
+async function addUserSubmittedProjects(newProjects: Agent[]) {
   try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.setItem('userSubmittedProjects', JSON.stringify(USER_SUBMITTED_PROJECTS));
+    // Add to Supabase first
+    const addedCount = await supabaseService.addProjects(newProjects);
+    console.log(`Added ${addedCount} projects to Supabase`);
+    
+    // Also add to local storage as backup
+    for (const project of newProjects) {
+      if (!USER_SUBMITTED_PROJECTS.some(p => p.url === project.url)) {
+        USER_SUBMITTED_PROJECTS.push(project);
+      }
     }
+    
+    // Save to localStorage as backup
+    saveProjects();
+    
+    return addedCount;
   } catch (error) {
-    console.error('Error saving submitted projects to localStorage:', error);
+    console.error('Error adding user-submitted projects:', error);
+    return 0;
   }
-  
-  // Clear agent cache to ensure fresh data on next load
-  if (typeof window !== 'undefined' && window.__AGENT_CACHE__) {
-    window.__AGENT_CACHE__.agents = null;
-  }
-  
-  // Return all projects including the new ones
-  return getAllProjects();
 }
 
-class GitHubService {
+export class GitHubService {
+  // Use our getAllProjects function
   static getAllProjects = getAllProjects;
-
-  static fetchAgents(): Promise<Agent[]> {
-    return new Promise((resolve, reject) => {
-      try {
-        // Get all projects from the combined list
-        const allProjects = getAllProjects();
-        
-        console.log(`Fetching all agents (${allProjects.length} total)`);
-        
-        // Filter out non-English projects for all users
-        const englishProjects = allProjects.filter(agent => 
-          !this.containsNonEnglishCharacters(agent.name) && 
-          !this.containsNonEnglishCharacters(agent.description)
-        );
-        
-        // Make sure we're returning at least 300 projects to all users
-        console.log(`Fetched ${englishProjects.length} agents from ${allProjects.length} total`);
-        
-        // Ensure all browsers have the same data by not using browser-specific features
-        // that might be handled differently in Safari vs Chrome
-        resolve(englishProjects);
-      } catch (error) {
-        console.error('Error in fetchAgents:', error);
-        // If there's an error, return the REAL_PROJECTS as a fallback to ensure users always see content
-        resolve(REAL_PROJECTS);
-      }
-    });
-  }
-
-  static searchAgents(query: string): Promise<Agent[]> {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const normalizedQuery = query.toLowerCase().trim();
-        
-        // If query is empty, return all agents
-        if (!normalizedQuery) {
-          const allProjects = getAllProjects().filter(agent => 
-            !this.containsNonEnglishCharacters(agent.name) && 
-            !this.containsNonEnglishCharacters(agent.description)
-          );
-          resolve(allProjects);
-          return;
-        }
-        
-        // Split the query into individual terms for better matching
-        const searchTerms = normalizedQuery.split(/\s+/).filter(term => term.length > 0);
-        
-        // Filter agents based on search terms
-        const results = getAllProjects().filter(agent => {
-          // First check if the repository is in English
-          if (this.containsNonEnglishCharacters(agent.name) || 
-              this.containsNonEnglishCharacters(agent.description)) {
-            return false;
-          }
-          
-          // Convert agent data to lowercase for case-insensitive matching
-          const name = agent.name.toLowerCase();
-          const description = agent.description.toLowerCase();
-          const topics = agent.topics.map(t => t.toLowerCase());
-          
-          // Check if any search term matches any field
-          // For multi-term queries, require at least one match for each term
-          return searchTerms.every(term => 
-            name.includes(term) || 
-            description.includes(term) || 
-            topics.some(topic => topic.includes(term))
-          );
-        });
-        
-        // Sort results by relevance (number of term matches)
-        const sortedResults = results.sort((a, b) => {
-          const aRelevance = this.calculateRelevance(a, searchTerms);
-          const bRelevance = this.calculateRelevance(b, searchTerms);
-          return bRelevance - aRelevance;
-        });
-        
-        // Log the search results for debugging
-        console.log(`Search for "${query}" found ${sortedResults.length} results`);
-        
-        resolve(sortedResults);
-      }, 300);
-    });
-  }
   
-  // Helper method to calculate search relevance score
-  private static calculateRelevance(agent: Agent, searchTerms: string[]): number {
-    const name = agent.name.toLowerCase();
-    const description = agent.description.toLowerCase();
-    const topics = agent.topics.map(t => t.toLowerCase());
-    
-    let score = 0;
-    
-    // Check each search term
-    for (const term of searchTerms) {
-      // Name matches are most important
-      if (name.includes(term)) {
-        score += 10;
-        // Exact name match or starts with term gets bonus points
-        if (name === term || name.startsWith(term + ' ')) {
-          score += 15;
-        }
-      }
-      
-      // Description matches
-      if (description.includes(term)) {
-        score += 5;
-      }
-      
-      // Topic matches
-      if (topics.some(topic => topic.includes(term))) {
-        score += 8;
-      }
-      
-      // Stars and forks add to relevance
-      score += Math.min(agent.stars / 100, 10); // Cap at 10 points
-      score += Math.min(agent.forks / 20, 5);   // Cap at 5 points
-    }
-    
-    return score;
-  }
-
-  static getLastUpdatedTimestamp(): string {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      return localStorage.getItem('lastAgentRefresh') || new Date().toISOString();
-    } else {
-      return new Date().toISOString();
-    }
-  }
-
-  static formatLastUpdated(timestamp: string): string {
-    if (!timestamp) return 'Never';
-    
-    const date = new Date(timestamp);
-    
-    // Check if date is valid
-    if (isNaN(date.getTime())) return 'Unknown';
-    
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
-
-  static refreshAgentData(): Promise<{timestamp: string, agents: Agent[]}> {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const refreshedAgents = getAllProjects();
-        const timestamp = new Date().toISOString();
-        if (typeof window !== 'undefined' && window.localStorage) {
-          localStorage.setItem('lastAgentRefresh', timestamp);
-        }
-        resolve({ timestamp, agents: refreshedAgents });
-      }, 1000);
-    });
-  }
-
-  static getTopAgentMcpProjects(): Promise<Agent[]> {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // Filter for projects explicitly related to AI Agents or MCP
-        const agentMcpProjects = getAllProjects().filter(agent => {
-          // Check if the repository is in English by examining name and description
-          if (this.containsNonEnglishCharacters(agent.name) || this.containsNonEnglishCharacters(agent.description)) {
-            return false;
-          }
-          
-          const topics = agent.topics.map(topic => topic.toLowerCase());
-          const nameAndDesc = (agent.name + ' ' + agent.description).toLowerCase();
-          
-          // More specific agent-related keywords
-          const agentKeywords = [
-            'ai agent', 'ai-agent', 'aiagent',
-            'llm agent', 'llm-agent', 'llmagent',
-            'autonomous agent', 'agent framework',
-            'agent-framework', 'agent orchestration',
-            'agent-orchestration', 'ai assistant',
-            'ai-assistant', 'llm framework',
-            'agent system', 'multi-agent',
-            'multiagent', 'agent communication'
-          ];
-          
-          // MCP-related keywords
-          const mcpKeywords = [
-            'mcp', 'model context protocol',
-            'context protocol', 'context orchestration',
-            'model orchestration', 'context handling',
-            'agent communication', 'agent protocol',
-            'model context', 'context window',
-            'context framework', 'agent interoperability',
-            'agent communication protocol',
-            'model integration'
-          ];
-          
-          // Check if any of the keywords are present in topics or name/description
-          const hasAgentKeyword = agentKeywords.some(keyword => 
-            topics.some(t => t.includes(keyword)) || nameAndDesc.includes(keyword)
-          );
-          
-          const hasMcpKeyword = mcpKeywords.some(keyword => 
-            topics.some(t => t.includes(keyword)) || nameAndDesc.includes(keyword)
-          );
-          
-          return hasAgentKeyword || hasMcpKeyword;
-        });
-        
-        // Sort by stars descending
-        const topProjects = [...agentMcpProjects]
-          .sort((a, b) => b.stars - a.stars)
-          .slice(0, 10);
-          
-        resolve(topProjects);
-      }, 300);
-    });
-  }
-  
-  // Helper method to detect non-English characters
-  static containsNonEnglishCharacters(text: string | null | undefined): boolean {
-    if (!text) return false; // Empty text is considered valid English
-    
-    // Common non-English character ranges (Unicode blocks)
-    const nonEnglishPatterns = [
-      /[\u4E00-\u9FFF]/,  // Chinese
-      /[\u3040-\u309F\u30A0-\u30FF]/,  // Japanese
-      /[\uAC00-\uD7AF]/,  // Korean
-      /[\u0400-\u04FF]/,  // Cyrillic (Russian)
-      /[\u0600-\u06FF]/,  // Arabic
-      /[\u0900-\u097F]/   // Devanagari
-    ];
-    
-    // Check if text contains ANY non-English characters - stricter filtering
-    for (const pattern of nonEnglishPatterns) {
-      if (pattern.test(text)) {
-        // If ANY non-English characters are found, consider it non-English
-        return true;
-      }
-    }
-    
-    // Additional check for repositories with mixed language content
-    // Check if the text has a high ratio of non-ASCII characters
-    const nonAsciiCount = (text.match(/[^\x00-\x7F]/g) || []).length;
-    const textLength = text.length;
-    
-    // If more than 10% of characters are non-ASCII, consider it non-English
-    if (textLength > 0 && nonAsciiCount / textLength > 0.1) {
-      return true;
-    }
-    
-    return false;
-  }
-
-  static addProjectFromGitHub(url: string): Promise<{success: boolean, error?: string, agent?: Agent}> {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        try {
-          // Extract owner and repo name from GitHub URL
-          const urlObj = new URL(url);
-          const pathParts = urlObj.pathname.split('/').filter(Boolean);
-          
-          if (pathParts.length < 2 || !url.includes('github.com')) {
-            resolve({
-              success: false,
-              error: 'Invalid GitHub URL format. Please use https://github.com/owner/repo'
-            });
-            return;
-          }
-          
-          const owner = pathParts[0];
-          const repoName = pathParts[1];
-          
-          // Check if project already exists
-          const existingProject = getAllProjects().find(
-            project => project.url.toLowerCase() === url.toLowerCase() || 
-                      (project.owner.toLowerCase() === owner.toLowerCase() && 
-                       project.name.toLowerCase() === repoName.toLowerCase())
-          );
-          
-          if (existingProject) {
-            resolve({
-              success: false,
-              error: 'This project is already in the directory'
-            });
-            return;
-          }
-          
-          // In a real implementation, we would fetch data from GitHub API
-          // For this demo, we'll create a simulated project with the provided URL
-          
-          // Simulate checking if description contains 'AI agent' or 'MCP'
-          // In real implementation, we would fetch repo description from GitHub API
-          const randomDescriptions = [
-            'An AI agent project for intelligent task automation',
-            'MCP-based framework for autonomous agents',
-            'Experimental AI agent for natural language processing',
-            'Machine learning framework with agent capabilities',
-            'AI multi-agent system for distributed problem solving'
-          ];
-          
-          const description = randomDescriptions[Math.floor(Math.random() * randomDescriptions.length)];
-          
-          // Generate random stats for demonstration
-          const stars = Math.floor(Math.random() * 5000);
-          const forks = Math.floor(Math.random() * 1000);
-          
-          // Create new agent entry
-          const newAgent: Agent = {
-            id: `user-${Date.now()}`,
-            name: repoName,
-            description,
-            stars,
-            forks,
-            url,
-            owner,
-            avatar: `https://github.com/${owner}.png`,
-            language: ['JavaScript', 'TypeScript', 'Python', 'Go', 'Rust'][Math.floor(Math.random() * 5)],
-            updated: new Date().toISOString(),
-            topics: ['ai', 'agent', 'machine-learning', 'autonomous', 'mcp'].sort(() => Math.random() - 0.5).slice(0, 3),
-            license: 'MIT'
-          };
-          
-          // Add to server storage
-          serverStorage.addProject(newAgent);
-          
-          resolve({
-            success: true,
-            agent: newAgent
-          });
-        } catch (error) {
-          console.error('Error adding project:', error);
-          resolve({
-            success: false,
-            error: 'Failed to add project. Please try again.'
-          });
-        }
-      }, 800);
-    });
-  }
-
+  // Add a single project by URL
   static addProject = async function(url: string): Promise<{success: boolean, error?: string, agent?: Agent}> {
     return GitHubService.addProjectFromGitHub(url);
-  };
-
+  }
+  
+  // Bulk add projects by URL
   static addProjects = async function(urls: string[]): Promise<{url: string, success: boolean, error?: string}[]> {
     const results = [];
     
@@ -709,12 +358,15 @@ class GitHubService {
     }
     
     return results;
-  };
-
-  static getExistingProjectUrls = function(): string[] {
-    return getAllProjects().map(project => project.url);
-  };
-
+  }
+  
+  // Get all existing project URLs
+  static getExistingProjectUrls = async function(): Promise<string[]> {
+    const projects = await getAllProjects();
+    return projects.map(project => project.url);
+  }
+  
+  // Get all agent data
   static getAgentData = async (): Promise<{timestamp: string, agents: Agent[]}> => {
     try {
       // Ensure we get all agents consistently across browsers
@@ -729,17 +381,276 @@ class GitHubService {
       // Return empty data rather than throwing to prevent cascading errors
       return { timestamp: new Date().toISOString(), agents: [] };
     }
-  };
-
+  }
+  
+  // Fetch all agents from Supabase or fallback sources
+  static async fetchAgents(): Promise<Agent[]> {
+    try {
+      console.log('Fetching agents from all sources...');
+      
+      // Try to get projects from Supabase first
+      try {
+        const supabaseProjects = await supabaseService.getAllProjects();
+        if (supabaseProjects && supabaseProjects.length > 0) {
+          console.log(`Got ${supabaseProjects.length} projects from Supabase`);
+          return supabaseProjects;
+        }
+      } catch (supabaseError) {
+        console.warn('Failed to fetch from Supabase, using local data:', supabaseError);
+        // Fall through to use other sources
+      }
+      
+      // Fall back to combining real and user-submitted projects
+      try {
+        console.log('Falling back to local data sources...');
+        const allProjects = await getAllProjects();
+        console.log(`Returning ${allProjects.length} projects from local sources`);
+        return allProjects;
+      } catch (localError) {
+        console.error('Failed to get projects from local sources:', localError);
+      }
+      
+      // Last resort: just return the predefined REAL_PROJECTS
+      console.log(`Last resort fallback: returning ${REAL_PROJECTS.length} predefined REAL_PROJECTS`);
+      return [...REAL_PROJECTS];
+    } catch (error) {
+      console.error('Error in fetchAgents:', error);
+      // Always return something to prevent cascading errors
+      return [...REAL_PROJECTS];
+    }
+  }
+  
+  // Search for agents by query
+  static async searchAgents(query: string): Promise<Agent[]> {
+    try {
+      console.log(`Searching for agents with query: "${query}"`);
+      
+      if (!query || query.trim() === '') {
+        return GitHubService.fetchAgents();
+      }
+      
+      // Try to search in Supabase first
+      try {
+        const supabaseResults = await supabaseService.searchProjects(query);
+        if (supabaseResults.length > 0) {
+          console.log(`Found ${supabaseResults.length} matching agents in Supabase`);
+          return supabaseResults;
+        }
+      } catch (supabaseError) {
+        console.error('Supabase search failed, using local search:', supabaseError);
+      }
+      
+      // Fallback to local search
+      const agents = await GitHubService.fetchAgents();
+      const searchTerms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      
+      // Match ANY term (not ALL terms) for better results
+      const results = agents.filter(agent => {
+        const searchableText = [
+          agent.name?.toLowerCase() || '',
+          agent.description?.toLowerCase() || '',
+          agent.language?.toLowerCase() || '',
+          agent.owner?.toLowerCase() || '',
+          ...(agent.topics?.map(t => t.toLowerCase()) || [])
+        ].join(' ');
+        
+        // Check if ANY search term matches
+        return searchTerms.some(term => searchableText.includes(term));
+      });
+      
+      console.log(`Local search found ${results.length} matching agents`);
+      return results;
+    } catch (error) {
+      console.error('Error searching agents:', error);
+      return [];
+    }
+  }
+  
+  // Helper method to calculate search relevance score
+  static calculateRelevance(agent: Agent, searchTerms: string[]): number {
+    let score = 0;
+    const fields = [
+      { text: agent.name?.toLowerCase() || '', weight: 3 },
+      { text: agent.description?.toLowerCase() || '', weight: 2 },
+      { text: agent.owner?.toLowerCase() || '', weight: 1 },
+      { text: agent.language?.toLowerCase() || '', weight: 1 },
+      { text: (agent.topics || []).join(' ').toLowerCase(), weight: 2 }
+    ];
+    
+    for (const term of searchTerms) {
+      for (const field of fields) {
+        if (field.text.includes(term)) {
+          score += field.weight;
+        }
+      }
+    }
+    
+    return score;
+  }
+  
+  // Get last updated timestamp
+  static getLastUpdatedTimestamp(): string {
+    return new Date().toISOString();
+  }
+  
+  // Format last updated timestamp for display
+  static formatLastUpdated(timestamp: string): string {
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+    } catch (error) {
+      return 'Unknown';
+    }
+  }
+  
+  // Refresh agent data
+  static async refreshAgentData(): Promise<{timestamp: string, agents: Agent[]}> {
+    try {
+      // Get fresh data from all sources
+      const agents = await getAllProjects();
+      const timestamp = GitHubService.getLastUpdatedTimestamp();
+      
+      // Save data to Supabase
+      await supabaseService.addProjects(agents);
+      
+      return { timestamp, agents };
+    } catch (error) {
+      console.error('Error refreshing agent data:', error);
+      return { timestamp: GitHubService.getLastUpdatedTimestamp(), agents: [] };
+    }
+  }
+  
+  // Get top AI agent and MCP projects
+  static async getTopAgentMcpProjects(): Promise<Agent[]> {
+    try {
+      const allAgents = await GitHubService.fetchAgents();
+      
+      // Sort by stars and take top 20
+      return allAgents
+        .sort((a, b) => (b.stars || 0) - (a.stars || 0))
+        .slice(0, 20);
+    } catch (error) {
+      console.error('Error getting top projects:', error);
+      return [];
+    }
+  }
+  
+  // Helper method to detect non-English characters
+  static containsNonEnglishCharacters(text: string | null | undefined): boolean {
+    if (!text) return false;
+    
+    // This regex matches characters outside the basic Latin alphabet
+    const nonEnglishRegex = /[^\x00-\x7F]/;
+    return nonEnglishRegex.test(text);
+  }
+  
+  // Add a project from GitHub URL
+  static async addProjectFromGitHub(url: string): Promise<{success: boolean, error?: string, agent?: Agent}> {
+    console.log(`Adding project from GitHub URL: ${url}`);
+    
+    try {
+      // Create new agent with basic info
+      const agent: Agent = {
+        id: crypto.randomUUID(),
+        url,
+        name: url.split('/').pop() || 'Unknown',
+        description: 'Loading...',
+        stars: 0,
+        forks: 0,
+        owner: url.split('/').slice(-2)[0] || 'Unknown',
+        avatar: `https://github.com/${url.split('/').slice(-2)[0]}.png`,
+        language: 'Unknown',
+        updated: new Date().toISOString(),
+        topics: [],
+        license: 'Unknown'
+      };
+      
+      // We would fetch more details from GitHub API here
+      // For now, just add the basic project
+      
+      // Add to Supabase
+      const added = await supabaseService.addProject(agent);
+      
+      if (!added) {
+        return { 
+          success: false, 
+          error: 'Project already exists or could not be added' 
+        };
+      }
+      
+      // Also add to local storage as backup
+      if (!USER_SUBMITTED_PROJECTS.some(p => p.url === url)) {
+        USER_SUBMITTED_PROJECTS.push(agent);
+        saveProjects();
+      }
+      
+      return { success: true, agent };
+    } catch (error) {
+      console.error('Error adding project from GitHub:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      };
+    }
+  }
+  
   // Add new method to handle bulk project submission
-  static submitProjects(projects: Agent[]): Promise<Agent[]> {
-    return new Promise((resolve) => {
-      // Process the projects immediately
-      const processedProjects = addUserSubmittedProjects(projects);
-      console.log(`Successfully added ${projects.length} projects. Total projects: ${processedProjects.length}`);
-      resolve(processedProjects);
-    });
+  static async submitProjects(projects: Agent[]): Promise<Agent[]> {
+    try {
+      // Add projects to Supabase
+      const addedCount = await supabaseService.addProjects(projects);
+      console.log(`Added ${addedCount} projects to Supabase in bulk`);
+      
+      // Return the projects that were added
+      return projects;
+    } catch (error) {
+      console.error('Error submitting projects in bulk:', error);
+      return [];
+    }
+  }
+  
+  // Method to initialize the data in the correct order
+  static async initialize(): Promise<void> {
+    try {
+      console.log('Initializing GitHubService...');
+      
+      // Try to initialize Supabase but don't let errors stop the process
+      try {
+        await supabaseService.initializeTable();
+      } catch (error) {
+        console.warn('Supabase initialization failed, continuing with local data:', error);
+        // Continue anyway - we'll fall back to local data
+      }
+      
+      // Get projects from all sources, with error handling
+      try {
+        const projects = await getAllProjects();
+        
+        // Make sure they're all in Supabase
+        if (projects.length > 0) {
+          try {
+            await supabaseService.addProjects(projects);
+          } catch (supabaseError) {
+            console.warn('Failed to add projects to Supabase during initialization, using local storage:', supabaseError);
+            // Continue with local data
+          }
+        }
+      } catch (getProjectsError) {
+        console.warn('Failed to get all projects during initialization:', getProjectsError);
+        // Continue with whatever data we have
+      }
+      
+      console.log('GitHubService initialization complete');
+    } catch (error) {
+      console.error('Error initializing GitHubService:', error);
+      // Don't rethrow - we want to continue even if initialization fails
+    }
   }
 }
 
-export { GitHubService, REAL_PROJECTS };
+// Initialize the service immediately
+GitHubService.initialize().catch(error => 
+  console.error('Failed to initialize GitHubService:', error)
+);
+
+export { REAL_PROJECTS };

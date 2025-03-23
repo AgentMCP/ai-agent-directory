@@ -347,19 +347,29 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
         console.log('Submitting projects to GitHubService:', newAgentObjects.length);
         await GitHubService.submitProjects(newAgentObjects);
         
+        // Force a refresh of the directory data after submission
+        await GitHubService.refreshAgentData();
+        
+        // Notify the parent component about the added projects
         if (onProjectsAdded) {
           onProjectsAdded(newAgentObjects.length);
         }
-        
+
+        // Show success toast
         toast({
-          title: "Success!",
-          description: `Added ${newAgentObjects.length} new projects to the directory.`,
+          title: 'Projects Added',
+          description: `Successfully added ${newAgentObjects.length} projects to the directory.`,
         });
       } catch (error) {
-        console.error('Error saving imported repositories:', error);
+        console.error('Error submitting projects:', error);
+        toast({
+          title: 'Error Adding Projects',
+          description: 'There was an error adding the projects to the directory.',
+          variant: 'destructive'
+        });
       }
     }
-    
+
     if (onClose) {
       onClose();
     }

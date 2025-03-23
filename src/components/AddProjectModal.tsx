@@ -9,9 +9,10 @@ import { toast } from './ui/use-toast';
 interface AddProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onProjectAdded?: (count: number) => void;
 }
 
-const AddProjectModal = ({ isOpen, onClose }: AddProjectModalProps) => {
+const AddProjectModal = ({ isOpen, onClose, onProjectAdded }: AddProjectModalProps) => {
   const [activeTab, setActiveTab] = useState<string>('single');
   
   const handleProjectAdded = async (url: string) => {
@@ -21,6 +22,12 @@ const AddProjectModal = ({ isOpen, onClose }: AddProjectModalProps) => {
         title: "Success",
         description: "Project added successfully. It will appear in the directory shortly.",
       });
+      
+      // Notify parent component that a project was added
+      if (onProjectAdded) {
+        onProjectAdded(1);
+      }
+      
       onClose();
     } catch (error) {
       console.error('Error adding project:', error);
@@ -41,6 +48,11 @@ const AddProjectModal = ({ isOpen, onClose }: AddProjectModalProps) => {
         title: "Bulk Import Complete",
         description: `Successfully added ${successCount} out of ${urls.length} projects.`,
       });
+      
+      // Notify parent component of how many projects were added
+      if (onProjectAdded) {
+        onProjectAdded(successCount);
+      }
       
       onClose();
     } catch (error) {
@@ -78,9 +90,12 @@ const AddProjectModal = ({ isOpen, onClose }: AddProjectModalProps) => {
           
           <TabsContent value="bulk" className="mt-0">
             <BulkImportForm 
-              onProjectsAdded={handleBulkProjectsAdded}
-              existingProjectUrls={existingProjectUrls}
-              onCancel={onClose}
+              onClose={onClose}
+              onProjectsAdded={(count) => {
+                if (onProjectAdded) {
+                  onProjectAdded(count);
+                }
+              }}
             />
           </TabsContent>
         </Tabs>

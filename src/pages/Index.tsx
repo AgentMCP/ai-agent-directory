@@ -1,15 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Navbar from '../components/Navbar';
 import Hero from '../components/Hero';
 import DirectoryGrid from '../components/DirectoryGrid';
 import { GitHubService } from '../services/GitHubService';
 import { Layers, Heart, Github, Sparkles } from 'lucide-react';
 import AddProjectModal from '../components/AddProjectModal';
+import BulkImportModal from '../components/BulkImportModal';
+import { useToast } from '../components/ui/use-toast';
 
 const Index = () => {
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
+  const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
   const [totalProjects, setTotalProjects] = useState(100); // Default value
+  const [refreshKey, setRefreshKey] = useState(0); // Used to force re-render of DirectoryGrid
 
   useEffect(() => {
     const lastRefresh = localStorage.getItem('lastAgentRefresh');
@@ -18,12 +23,20 @@ const Index = () => {
     if (!lastRefresh || (now.getTime() - new Date(lastRefresh).getTime() > 24 * 60 * 60 * 1000)) {
       GitHubService.refreshAgentData().then((refreshedData) => {
         localStorage.setItem('lastAgentRefresh', now.toISOString());
+        updateTotalProjects();
       });
+    } else {
+      updateTotalProjects();
     }
+  }, []);
 
-    // Get the total number of projects
-    const projects = GitHubService.getAllProjects();
-    setTotalProjects(projects.length);
+  const updateTotalProjects = useCallback(async () => {
+    try {
+      const projects = await GitHubService.getAllProjects();
+      setTotalProjects(projects.length);
+    } catch (error) {
+      console.error("Error updating total projects:", error);
+    }
   }, []);
 
   const handleSearch = (query: string) => {
@@ -39,6 +52,34 @@ const Index = () => {
     setIsAddProjectModalOpen(true);
   };
 
+  const handleBulkImport = () => {
+    setIsBulkImportModalOpen(true);
+  };
+
+  const handleProjectsAdded = async (count: number) => {
+    try {
+      // Refresh the directory data
+      await GitHubService.refreshAgentData();
+      
+      // Update total projects count
+      await updateTotalProjects();
+      
+      // Force DirectoryGrid to re-render
+      setRefreshKey(prev => prev + 1);
+      
+      toast({
+        title: "Success",
+        description: `${count} project${count === 1 ? '' : 's'} added to the directory.`,
+      });
+    } catch (error) {
+      console.error("Error refreshing data after adding projects:", error);
+      toast({
+        title: "Warning",
+        description: "Projects were added but the directory may need to be refreshed manually.",
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
@@ -47,7 +88,7 @@ const Index = () => {
         <Hero onSearch={handleSearch} onAddProject={handleAddProject} totalProjects={totalProjects} />
         
         <div id="directory" className="max-w-7xl mx-auto px-4 pt-2 pb-8">
-          <DirectoryGrid initialSearchQuery={searchQuery} />
+          <DirectoryGrid key={refreshKey} initialSearchQuery={searchQuery} />
         </div>
         
         <section id="about-section" className="py-16 bg-gradient-to-b from-[#0e1129] to-[#1e2344] text-white">
@@ -133,7 +174,14 @@ const Index = () => {
       
       <AddProjectModal 
         isOpen={isAddProjectModalOpen} 
-        onClose={() => setIsAddProjectModalOpen(false)} 
+        onClose={() => setIsAddProjectModalOpen(false)}
+        onProjectAdded={handleProjectsAdded}
+      />
+      
+      <BulkImportModal 
+        isOpen={isBulkImportModalOpen}
+        onClose={() => setIsBulkImportModalOpen(false)}
+        onProjectsAdded={handleProjectsAdded}
       />
     </div>
   );
