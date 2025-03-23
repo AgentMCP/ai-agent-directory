@@ -114,7 +114,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
       setProgress(5);
 
       // Get the maximum allowed import count based on whether this is the first import
-      const maxResults = isFirstImport ? 250 : 100;
+      const maxResults = isFirstImport ? 2000 : 2000;
       setStatus(`Searching for AI Agent and MCP repositories (max ${maxResults})...`);
 
       // Call the scrapeGitHubRepositories method to fetch repositories
@@ -126,6 +126,15 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
         if (!Array.isArray(repositories)) {
           console.error('Repository search did not return an array:', repositories);
           throw new Error('Invalid repository data received');
+        }
+        
+        // Log the number of repositories found
+        console.log(`Found ${repositories.length} repositories from search`);
+        
+        // If we found zero repositories, try with fallback data
+        if (repositories.length === 0) {
+          setStatus('No repositories found in search, using fallback data...');
+          repositories = ScrapeService.getFallbackRepositories(isFirstImport);
         }
       } catch (searchError) {
         console.error('Error during repository search:', searchError);

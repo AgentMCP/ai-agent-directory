@@ -55,7 +55,7 @@ const ScrapeService = {
   /**
    * Scrape GitHub repositories for AI Agents and MCP tools
    * @param query Search query
-   * @param isFirstImport Whether this is the first import (allows up to 250 repos)
+   * @param isFirstImport Whether this is the first import (allows up to 2000 repos)
    * @returns List of validated repositories
    */
   async scrapeGitHubRepositories(query = 'AI Agent MCP', isFirstImport = false): Promise<Agent[]> {
@@ -68,7 +68,7 @@ const ScrapeService = {
       return CACHED_SEARCH_RESULTS.get(cacheKey) || [];
     }
     
-    const maxResults = isFirstImport ? 250 : 100;
+    const maxResults = isFirstImport ? 2000 : 2000;
     
     try {
       // Search terms related to AI Agents and MCP - more specific to ensure quality results
@@ -152,18 +152,25 @@ const ScrapeService = {
       // Enhanced validation - ensure repositories are in English and contain specific agent-related terms
       const repositories = allRepositories.filter(repo => {
         // First check if it's an English repository
-        if (!this.isEnglishContent(repo.name) || !this.isEnglishContent(repo.description)) {
+        if (!this.isEnglishContent(repo.name)) {
           return false;
         }
         
-        // Then check if it's related to AI Agents or MCP
-        const isAgentOrMcp = this.isAIAgentRepository(repo) || this.isMCPRepository(repo);
+        // Relaxed validation: Check if it's potentially related to AI Agents or MCP
+        // We'll consider a repo valid if it has a reasonable description and topic matches
+        const hasDescription = repo.description && repo.description.length > 10;
+        const isAgentOrMcp = hasDescription && (
+          this.isAIAgentRepository(repo) || 
+          this.isMCPRepository(repo) ||
+          (repo.name && (
+            repo.name.toLowerCase().includes('agent') || 
+            repo.name.toLowerCase().includes('ai') ||
+            repo.name.toLowerCase().includes('mcp')
+          ))
+        );
         
-        // Additional quality filters
-        const hasMinimumStars = repo.stars >= 5;
-        const hasForksOrLicense = repo.forks >= 1 || (repo.license !== undefined && repo.license !== null);
-        
-        return isAgentOrMcp && hasMinimumStars && hasForksOrLicense;
+        // Relaxed quality filters - allow more repositories to be imported
+        return isAgentOrMcp;
       });
       
       // Convert to Agent objects
@@ -231,9 +238,9 @@ const ScrapeService = {
         const queryString = searchTerms.join('+');
         
         // Add language filter to the query to prioritize English content
-        // language:en will filter for repositories with English as the primary language
-        // We'll also exclude repositories with certain languages to avoid non-English content
-        const apiUrl = `https://api.github.com/search/repositories?q=${queryString}+in:name,description,readme+language:en+-language:zh+-language:zh-cn+-language:zh-tw+-language:ru+-language:ko+-language:ja+-language:ar&sort=stars&order=desc&per_page=100`;
+        // We'll search for a high number of results (up to 100 per page)
+        // Remove strict language filters to get more results
+        const apiUrl = `https://api.github.com/search/repositories?q=${queryString}+in:name,description,readme&sort=stars&order=desc&per_page=100`;
         
         // First check if the fetch will succeed (CORS check)
         try {
@@ -248,21 +255,19 @@ const ScrapeService = {
             
             if (data && data.items) {
               for (const item of data.items) {
-                // Additional check for English content
-                if (this.isEnglishContent(item.name) && this.isEnglishContent(item.description)) {
-                  searchResults.push({
-                    url: item.html_url,
-                    name: item.name,
-                    description: item.description || '',
-                    owner: item.owner.login,
-                    stars: item.stargazers_count,
-                    forks: item.forks_count,
-                    topics: item.topics || [],
-                    language: item.language,
-                    license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
-                    updated: item.updated_at
-                  });
-                }
+                // Add all items, we'll filter later
+                searchResults.push({
+                  url: item.html_url,
+                  name: item.name,
+                  description: item.description || '',
+                  owner: item.owner.login,
+                  stars: item.stargazers_count,
+                  forks: item.forks_count,
+                  topics: item.topics || [],
+                  language: item.language,
+                  license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
+                  updated: item.updated_at
+                });
               }
             }
           } else {
@@ -293,21 +298,19 @@ const ScrapeService = {
               
               if (data && data.items) {
                 for (const item of data.items) {
-                  // Additional check for English content
-                  if (this.isEnglishContent(item.name) && this.isEnglishContent(item.description)) {
-                    searchResults.push({
-                      url: item.html_url,
-                      name: item.name,
-                      description: item.description || '',
-                      owner: item.owner.login,
-                      stars: item.stargazers_count,
-                      forks: item.forks_count,
-                      topics: item.topics || [],
-                      language: item.language,
-                      license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
-                      updated: item.updated_at
-                    });
-                  }
+                  // Add all items, we'll filter later
+                  searchResults.push({
+                    url: item.html_url,
+                    name: item.name,
+                    description: item.description || '',
+                    owner: item.owner.login,
+                    stars: item.stargazers_count,
+                    forks: item.forks_count,
+                    topics: item.topics || [],
+                    language: item.language,
+                    license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
+                    updated: item.updated_at
+                  });
                 }
                 return searchResults;
               }
@@ -760,7 +763,7 @@ const ScrapeService = {
     ];
     
     // Generate some additional simulated repositories to reach max results
-    const maxResults = isFirstImport ? 250 : 100;
+    const maxResults = isFirstImport ? 2000 : 2000;
     const simulatedRepos = this.generateSimulatedResults('AI Agent MCP', 50);
     const combinedRepos = [...fallbackRepos];
     
