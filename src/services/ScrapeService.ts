@@ -55,7 +55,7 @@ const ScrapeService = {
   /**
    * Scrape GitHub repositories for AI Agents and MCP tools
    * @param query Search query
-   * @param isFirstImport Whether this is the first import (allows up to 2000 repos)
+   * @param isFirstImport Whether this is the first import (allows up to 250 repos)
    * @returns List of validated repositories
    */
   async scrapeGitHubRepositories(query = 'AI Agent MCP', isFirstImport = false): Promise<Agent[]> {
@@ -68,7 +68,7 @@ const ScrapeService = {
       return CACHED_SEARCH_RESULTS.get(cacheKey) || [];
     }
     
-    const maxResults = isFirstImport ? 2000 : 2000;
+    const maxResults = isFirstImport ? 250 : 100;
     
     try {
       // Search terms related to AI Agents and MCP - more specific to ensure quality results
@@ -763,7 +763,7 @@ const ScrapeService = {
     ];
     
     // Generate some additional simulated repositories to reach max results
-    const maxResults = isFirstImport ? 2000 : 2000;
+    const maxResults = isFirstImport ? 250 : 100;
     const simulatedRepos = this.generateSimulatedResults('AI Agent MCP', 50);
     const combinedRepos = [...fallbackRepos];
     

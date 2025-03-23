@@ -370,9 +370,39 @@ export class GitHubService {
       }
       
       console.log(`Submitting ${projects.length} projects to Supabase`);
-      await addUserSubmittedProjects(projects);
+      
+      // Process in smaller batches to avoid overloading the system
+      const batchSize = 25;
+      const batches = [];
+      
+      for (let i = 0; i < projects.length; i += batchSize) {
+        batches.push(projects.slice(i, i + batchSize));
+      }
+      
+      console.log(`Processing ${batches.length} batches of projects`);
+      
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        console.log(`Processing batch ${i+1} of ${batches.length} (${batch.length} projects)`);
+        
+        try {
+          await addUserSubmittedProjects(batch);
+          console.log(`Successfully processed batch ${i+1}`);
+        } catch (batchError) {
+          console.error(`Error processing batch ${i+1}:`, batchError);
+          // Continue with next batch even if this one failed
+        }
+        
+        // Small delay between batches to avoid overwhelming the system
+        if (i < batches.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      
+      console.log('All batches processed');
     } catch (error) {
       console.error('Error submitting projects:', error);
+      throw error; // Re-throw to allow proper error handling upstream
     }
   }
   

@@ -114,7 +114,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
       setProgress(5);
 
       // Get the maximum allowed import count based on whether this is the first import
-      const maxResults = isFirstImport ? 2000 : 2000;
+      const maxResults = isFirstImport ? 250 : 100;
       setStatus(`Searching for AI Agent and MCP repositories (max ${maxResults})...`);
 
       // Call the scrapeGitHubRepositories method to fetch repositories
@@ -333,8 +333,11 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
   };
 
   const handleModalClose = async (saveData: boolean) => {
-    if (saveData && searchResults.length > 0) {
-      try {
+    try {
+      if (saveData && searchResults.length > 0) {
+        setIsLoading(true);
+        setStatus(`Saving ${searchResults.length} projects to directory...`);
+        
         // Convert URLs to Agent objects to submit
         const newAgentObjects = searchResults.map((url, index) => ({
           id: `user-submitted-${Date.now()}-${index}`,
@@ -352,35 +355,60 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
           isLoading: false
         }));
 
-        // Submit the projects using GitHubService
-        console.log('Submitting projects to GitHubService:', newAgentObjects.length);
-        await GitHubService.submitProjects(newAgentObjects);
-        
-        // Force a refresh of the directory data after submission
-        await GitHubService.refreshAgentData();
-        
-        // Notify the parent component about the added projects
-        if (onProjectsAdded) {
-          onProjectsAdded(newAgentObjects.length);
+        try {
+          // Submit the projects using GitHubService - process in smaller batches if needed
+          console.log('Submitting projects to GitHubService:', newAgentObjects.length);
+          await GitHubService.submitProjects(newAgentObjects);
+          
+          // Force a refresh of the directory data after submission
+          console.log('Refreshing directory data...');
+          await GitHubService.refreshAgentData();
+          
+          // Notify the parent component about the added projects
+          if (onProjectsAdded) {
+            console.log('Notifying parent of added projects');
+            onProjectsAdded(newAgentObjects.length);
+          }
+
+          // Show success toast
+          toast({
+            title: 'Projects Added',
+            description: `Successfully added ${newAgentObjects.length} projects to the directory.`,
+          });
+          
+          // Final cleanup and close
+          setIsLoading(false);
+          resetState();
+          
+          if (onClose) {
+            onClose();
+          }
+        } catch (error) {
+          console.error('Error during project submission process:', error);
+          toast({
+            title: 'Error Adding Projects',
+            description: 'There was an error adding the projects to the directory.',
+            variant: 'destructive'
+          });
+          setIsLoading(false);
+          if (onClose) {
+            onClose();
+          }
         }
-
-        // Show success toast
-        toast({
-          title: 'Projects Added',
-          description: `Successfully added ${newAgentObjects.length} projects to the directory.`,
-        });
-      } catch (error) {
-        console.error('Error submitting projects:', error);
-        toast({
-          title: 'Error Adding Projects',
-          description: 'There was an error adding the projects to the directory.',
-          variant: 'destructive'
-        });
+      } else {
+        // No projects to save or user chose not to save
+        resetState();
+        if (onClose) {
+          onClose();
+        }
       }
-    }
-
-    if (onClose) {
-      onClose();
+    } catch (error) {
+      console.error('Unexpected error in modal close handler:', error);
+      setIsLoading(false);
+      resetState();
+      if (onClose) {
+        onClose();
+      }
     }
   };
 
