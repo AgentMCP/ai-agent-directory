@@ -379,12 +379,19 @@ export class GitHubService {
   /**
    * Refresh agent data (used after bulk import)
    */
-  static async refreshAgentData(): Promise<void> {
+  static async refreshAgentData(): Promise<Agent[]> {
     try {
       console.log('Refreshing agent data...');
-      // No additional action needed as the data is now stored in Supabase
+      
+      // Force a fresh data fetch from Supabase
+      const freshData = await supabaseService.getAllProjects();
+      console.log(`Refreshed data with ${freshData.length} projects`);
+      
+      return freshData;
     } catch (error) {
       console.error('Error refreshing agent data:', error);
+      // Return REAL_PROJECTS as a fallback if refresh fails
+      return REAL_PROJECTS;
     }
   }
 

@@ -21,14 +21,31 @@ const Index = () => {
     const now = new Date();
     
     if (!lastRefresh || (now.getTime() - new Date(lastRefresh).getTime() > 24 * 60 * 60 * 1000)) {
-      GitHubService.refreshAgentData().then((refreshedData) => {
-        localStorage.setItem('lastAgentRefresh', now.toISOString());
-        updateTotalProjects();
-      });
+      refreshData();
     } else {
       updateTotalProjects();
     }
   }, []);
+
+  const refreshData = useCallback(async () => {
+    try {
+      console.log('Refreshing agent data...');
+      const refreshedData = await GitHubService.refreshAgentData();
+      console.log(`Refresh complete: found ${refreshedData.length} projects`);
+      localStorage.setItem('lastAgentRefresh', new Date().toISOString());
+      setTotalProjects(refreshedData.length);
+      setRefreshKey(prev => prev + 1); // Force re-render of directory grid
+    } catch (error) {
+      console.error("Error refreshing data:", error);
+      toast({
+        title: "Refresh Failed",
+        description: "Unable to refresh data. Please try again later.",
+        variant: "destructive"
+      });
+      // Fallback to just counting existing projects
+      updateTotalProjects();
+    }
+  }, [toast]);
 
   const updateTotalProjects = useCallback(async () => {
     try {
@@ -36,8 +53,13 @@ const Index = () => {
       setTotalProjects(projects.length);
     } catch (error) {
       console.error("Error updating total projects:", error);
+      toast({
+        title: "Error Loading Projects",
+        description: "There was an error loading projects. Default data will be shown.",
+        variant: "destructive"
+      });
     }
-  }, []);
+  }, [toast]);
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -59,13 +81,7 @@ const Index = () => {
   const handleProjectsAdded = async (count: number) => {
     try {
       // Refresh the directory data
-      await GitHubService.refreshAgentData();
-      
-      // Update total projects count
-      await updateTotalProjects();
-      
-      // Force DirectoryGrid to re-render
-      setRefreshKey(prev => prev + 1);
+      await refreshData();
       
       toast({
         title: "Success",
