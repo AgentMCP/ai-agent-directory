@@ -5,10 +5,10 @@ import { REAL_PROJECTS } from './GitHubService';
 // Supabase configuration
 const SUPABASE_URL = 'https://tfhdkdkxlwtpgskytspc.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmaGRrZGt4bHd0cGdza3l0c3BjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI3NjI4MzIsImV4cCI6MjA1ODMzODgzMn0.iJo-rvb4mPMUQXZ1EYcTvepgUz7ZQ0Wn7EmuFRiEjmc';
-const PROJECTS_TABLE = 'projects';
+export const PROJECTS_TABLE = 'projects';
 
 // Initialize Supabase client
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /**
  * Service for storing and retrieving project data

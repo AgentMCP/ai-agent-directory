@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import AgentCard from './AgentCard';
 import { Agent, FilterOptions, SortOption } from '../types';
 import Filters from './Filters';
-import { SupabaseService } from '../services/SupabaseService';
+import { SupabaseService, supabase, PROJECTS_TABLE } from '../services/SupabaseService';
 import { GitHubService, REAL_PROJECTS } from '../services/GitHubService';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -76,15 +76,24 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
     setError(null);
     
     try {
-      // Explicitly fetch from Supabase to ensure we get ALL projects
-      console.log('DirectoryGrid: Initial load - fetching all agents from Supabase');
+      // Force a fresh fetch from Supabase ONLY - no local storage
+      console.log('DirectoryGrid: Forcing fresh fetch from Supabase');
       const supabaseService = SupabaseService.getInstance();
-      console.log('SupabaseService instance:', supabaseService);
-      const data = await supabaseService.getAllProjects();
-      console.log('DirectoryGrid: Received data from Supabase:', data);
       
+      // Clear any local storage to prevent using cached data
+      localStorage.removeItem('directory_projects');
+      
+      // Get data directly from Supabase
+      const { data, error } = await supabase
+        .from(PROJECTS_TABLE)
+        .select('*');
+      
+      if (error) {
+        throw new Error(`Supabase error: ${error.message}`);
+      }
+        
       if (!data || data.length === 0) {
-        console.log('DirectoryGrid: No agents found, using fallback data');
+        console.log('DirectoryGrid: No agents found in Supabase, using fallback data');
         console.log('Setting fallback REAL_PROJECTS:', REAL_PROJECTS);
         setAgents(REAL_PROJECTS);
         setFilteredAgents(REAL_PROJECTS);
@@ -93,12 +102,33 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
           description: "No projects found in database, showing sample data instead.",
         });
       } else {
-        console.log(`DirectoryGrid: Loaded ${data.length} agents`);
-        setAgents(data);
-        setFilteredAgents(data);
+        console.log(`DirectoryGrid: Loaded ${data.length} agents directly from Supabase`);
+        
+        // Remove duplicates by URL
+        const uniqueProjects: Agent[] = [];
+        const seenUrls = new Set<string>();
+        
+        data.forEach(project => {
+          if (project.url) {
+            const normalizedUrl = project.url.toLowerCase().trim();
+            if (!seenUrls.has(normalizedUrl)) {
+              seenUrls.add(normalizedUrl);
+              uniqueProjects.push(project);
+            }
+          } else {
+            uniqueProjects.push(project);
+          }
+        });
+        
+        if (uniqueProjects.length < data.length) {
+          console.log(`DirectoryGrid: Removed ${data.length - uniqueProjects.length} duplicate projects`);
+        }
+        
+        setAgents(uniqueProjects);
+        setFilteredAgents(uniqueProjects);
         toast({
           title: "Data Loaded",
-          description: `Successfully loaded ${data.length} projects from database.`,
+          description: `Successfully loaded ${uniqueProjects.length} projects from database.`,
         });
       }
     } catch (err) {
@@ -124,7 +154,7 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
     
     // Set up localStorage listener to detect changes from other components
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'directory_updated' || e.key === 'directory_projects') {
+      if (e.key === 'directory_updated') {
         console.log('DirectoryGrid: Storage change detected, refreshing data');
         fetchAgents();
       }
