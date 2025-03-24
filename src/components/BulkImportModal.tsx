@@ -22,7 +22,7 @@ import { motion } from 'framer-motion';
 import { GitHubService } from '../services/GitHubService';
 
 interface BulkImportModalProps {
-  onProjectsAdded?: (count: number) => void;
+  onProjectsAdded?: (agents: Agent[]) => void;
   existingProjectUrls?: string[];
   onClose?: () => void;
   isOpen?: boolean;
@@ -76,7 +76,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
           
           // If onProjectsAdded callback is provided, call it with reimported repos
           if (onProjectsAdded) {
-            onProjectsAdded(repos.length);
+            onProjectsAdded(repos);
           }
           
           // Clear the reimport data
@@ -105,170 +105,151 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
     setImportedCount(0);
 
     try {
-      // Save GitHub token to localStorage if provided
-      if (githubToken.trim()) {
-        localStorage.setItem('github_token', githubToken.trim());
-      }
-
-      setStatus('Searching for AI Agent and MCP repositories...');
-      setProgress(5);
-
-      // Get the maximum allowed import count based on whether this is the first import
-      const maxResults = isFirstImport ? 250 : 100;
-      setStatus(`Searching for AI Agent and MCP repositories (max ${maxResults})...`);
-
-      // Call the scrapeGitHubRepositories method to fetch repositories
-      let repositories: Agent[] = [];
-      try {
-        repositories = await ScrapeService.scrapeGitHubRepositories(searchQuery, isFirstImport);
-        
-        // Validate that we received proper data
-        if (!Array.isArray(repositories)) {
-          console.error('Repository search did not return an array:', repositories);
-          throw new Error('Invalid repository data received');
-        }
-        
-        // Log the number of repositories found
-        console.log(`Found ${repositories.length} repositories from search`);
-        
-        // If we found zero repositories, try with fallback data
-        if (repositories.length === 0) {
-          setStatus('No repositories found in search, using fallback data...');
-          repositories = ScrapeService.getFallbackRepositories(isFirstImport);
-        }
-      } catch (searchError) {
-        console.error('Error during repository search:', searchError);
-        setStatus('Error in repository search, using fallback data...');
-        repositories = ScrapeService.getFallbackRepositories(isFirstImport);
-      }
-
-      // Filter out repositories that already exist and any invalid entries
-      const newRepositories = repositories.filter(repo => 
-        repo && repo.url && !existingProjectUrls?.includes(repo.url)
-      );
-
-      setStatus(`Found ${repositories.length} repositories, ${newRepositories.length} are new.`);
-      setProgress(50);
-
-      // Mark that we've done an import
-      if (isFirstImport) {
-        localStorage.setItem('has_imported_repos', 'true');
-        setIsFirstImport(false);
-      }
-
-      // Process repositories in batches to avoid UI freezing
-      const processedRepos: string[] = [];
-      const batchSize = 10;
+      // Try to get token from localStorage but don't require it
+      const tokenFromStorage = localStorage.getItem('github_token') || '';
       
-      for (let i = 0; i < newRepositories.length; i += batchSize) {
-        const batch = newRepositories.slice(i, i + batchSize);
-        
-        for (const repo of batch) {
-          if (repo) {
-            processedRepos.push(repo.url);
-            
-            // Update progress
-            const currentProgress = 50 + Math.floor((processedRepos.length / newRepositories.length) * 50);
-            setProgress(currentProgress);
-            setStatus(`Processing repository ${processedRepos.length} of ${newRepositories.length}: ${repo.name || 'Unnamed Repository'}`);
-            
-            // Update displayed repositories immediately
-            setImportedProjects([...processedRepos]);
-          }
-        }
-        
-        // Add a small delay between batches
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-
-      setTotalFound(newRepositories.length);
-      setStatus(`Imported ${newRepositories.length} AI Agent and MCP repositories.`);
-      setProgress(100);
-
-      // Add the repositories to the results
-      setShowResults(true);
-      setSearchResults(newRepositories.map(repo => repo.url));
-      setImportedCount(newRepositories.length);
-
-      // If onProjectsAdded callback is provided, call it
-      if (onProjectsAdded && newRepositories.length > 0) {
-        onProjectsAdded(newRepositories.length);
-      }
-
-      // Save search to user's account if logged in
-      if (currentUser && newRepositories.length > 0) {
-        try {
-          await saveUserSearch(
-            currentUser.uid,
-            searchQuery,
-            newRepositories.map(repo => repo)
-          );
-          
-          toast({
-            title: 'Search Saved',
-            description: 'Your search has been saved to your account.',
-          });
-        } catch (saveError) {
-          console.error('Error saving search:', saveError);
-          // Don't show error to user, just log it
-        }
-      }
-
-      setShowSatisfactionQuery(true);
-
-      // Show a success toast
-      toast({
-        title: 'Import Complete',
-        description: `Successfully imported ${newRepositories.length} AI Agent and MCP repositories.`,
-      });
-    } catch (error: any) {
-      console.error('Error during repository search:', error);
-      setError(`Error searching repositories: ${error.message || 'Unknown error'}`);
-      setStatus('Error searching repositories');
-      setProgress(0);
-
-      // Try to load fallback repositories
-      try {
-        const fallbackRepos = ScrapeService.getFallbackRepositories(isFirstImport);
-
-        // Filter out repositories that already exist
-        const newFallbackRepos = fallbackRepos.filter(repo => 
+      console.log(`Searching with${tokenFromStorage ? '' : 'out'} GitHub token...`);
+      
+      // Always allow search to proceed, with or without token
+      const results = await ScrapeService.scrapeGitHubRepositories(searchQuery, isFirstImport, tokenFromStorage);
+      
+      if (results.length > 0) {
+        const newRepositories = results.filter(repo => 
           repo && repo.url && !existingProjectUrls?.includes(repo.url)
         );
 
-        if (newFallbackRepos.length > 0) {
-          setImportedProjects(newFallbackRepos.map(repo => repo.url));
-          setSearchResults(newFallbackRepos.map(repo => repo.url));
-          setImportedCount(newFallbackRepos.length);
-          setTotalFound(newFallbackRepos.length);
-          setStatus(`Loaded ${newFallbackRepos.length} fallback repositories.`);
-          setShowResults(true);
+        setStatus(`Found ${results.length} repositories, ${newRepositories.length} are new.`);
+        setProgress(50);
 
-          // If onProjectsAdded callback is provided, call it with fallback repos
-          if (onProjectsAdded) {
-            onProjectsAdded(newFallbackRepos.length);
-          }
-
-          toast({
-            title: 'Using Fallback Data',
-            description: `Loaded ${newFallbackRepos.length} sample AI Agent and MCP repositories as a fallback.`,
-          });
-
-          // Mark that we've done an import if this is the first one
-          if (isFirstImport) {
-            localStorage.setItem('has_imported_repos', 'true');
-            setIsFirstImport(false);
-          }
-        } else {
-          toast({
-            variant: 'destructive',
-            title: 'No New Repositories',
-            description: 'No new repositories found to import.',
-          });
+        // Mark that we've done an import
+        if (isFirstImport) {
+          localStorage.setItem('has_imported_repos', 'true');
+          setIsFirstImport(false);
         }
-      } catch (fallbackError) {
-        console.error('Error loading fallback repositories:', fallbackError);
+
+        // Process repositories in batches to avoid UI freezing
+        const processedRepos: string[] = [];
+        const batchSize = 10;
+        
+        for (let i = 0; i < newRepositories.length; i += batchSize) {
+          const batch = newRepositories.slice(i, i + batchSize);
+          
+          for (const repo of batch) {
+            if (repo) {
+              processedRepos.push(repo.url);
+              
+              // Update progress
+              const currentProgress = 50 + Math.floor((processedRepos.length / newRepositories.length) * 50);
+              setProgress(currentProgress);
+              setStatus(`Processing repository ${processedRepos.length} of ${newRepositories.length}: ${repo.name || 'Unnamed Repository'}`);
+              
+              // Update displayed repositories immediately
+              setImportedProjects([...processedRepos]);
+            }
+          }
+          
+          // Add a small delay between batches
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+
+        setTotalFound(newRepositories.length);
+        setStatus(`Imported ${newRepositories.length} AI Agent and MCP repositories.`);
+        setProgress(100);
+
+        // Add the repositories to the results
+        setShowResults(true);
+        setSearchResults(newRepositories.map(repo => repo.url));
+        setImportedCount(newRepositories.length);
+
+        // If onProjectsAdded callback is provided, call it
+        if (onProjectsAdded && newRepositories.length > 0) {
+          onProjectsAdded(newRepositories);
+        }
+
+        // Save search to user's account if logged in
+        if (currentUser && newRepositories.length > 0) {
+          try {
+            await saveUserSearch(
+              currentUser.uid,
+              searchQuery,
+              newRepositories.map(repo => repo)
+            );
+            
+            toast({
+              title: 'Search Saved',
+              description: 'Your search has been saved to your account.',
+            });
+          } catch (saveError) {
+            console.error('Error saving search:', saveError);
+            // Don't show error to user, just log it
+          }
+        }
+
+        setShowSatisfactionQuery(true);
+
+        // Show a success toast
+        toast({
+          title: 'Import Complete',
+          description: `Successfully imported ${newRepositories.length} AI Agent and MCP repositories.`,
+        });
+      } else {
+        // If no results with or without token, use fallback sample repos
+        console.log('No repositories found, using fallback sample repositories');
+        const sampleRepos = ScrapeService.getFallbackRepositories(isFirstImport);
+        const newSampleRepos = sampleRepos.filter(repo => 
+          repo && repo.url && !existingProjectUrls?.includes(repo.url)
+        );
+
+        setImportedProjects(newSampleRepos.map(repo => repo.url));
+        setSearchResults(newSampleRepos.map(repo => repo.url));
+        setImportedCount(newSampleRepos.length);
+        setTotalFound(newSampleRepos.length);
+        setStatus(`No repositories found. Showing ${newSampleRepos.length} sample AI agent repositories.`);
+        setShowResults(true);
+
+        // If onProjectsAdded callback is provided, call it with fallback repos
+        if (onProjectsAdded) {
+          onProjectsAdded(newSampleRepos);
+        }
+
+        toast({
+          title: 'Using Fallback Data',
+          description: `Loaded ${newSampleRepos.length} sample AI Agent and MCP repositories as a fallback.`,
+        });
+
+        // Mark that we've done an import if this is the first one
+        if (isFirstImport) {
+          localStorage.setItem('has_imported_repos', 'true');
+          setIsFirstImport(false);
+        }
       }
+    } catch (error: any) {
+      console.error('Error during repository search:', error);
+      
+      // Always use fallback repositories on any error
+      console.log('Error searching repositories, using fallback sample repositories');
+      const fallbackRepos = ScrapeService.getFallbackRepositories(isFirstImport);
+      const newFallbackRepos = fallbackRepos.filter(repo => 
+        repo && repo.url && !existingProjectUrls?.includes(repo.url)
+      );
+
+      setImportedProjects(newFallbackRepos.map(repo => repo.url));
+      setSearchResults(newFallbackRepos.map(repo => repo.url));
+      setImportedCount(newFallbackRepos.length);
+      setTotalFound(newFallbackRepos.length);
+      setStatus(`Error searching. Showing ${newFallbackRepos.length} sample AI agent repositories.`);
+      setShowResults(true);
+
+      // If onProjectsAdded callback is provided, call it with fallback repos
+      if (onProjectsAdded) {
+        onProjectsAdded(newFallbackRepos);
+      }
+
+      toast({
+        title: 'Error Adding Projects',
+        description: 'There was an error adding the projects to the directory.',
+        variant: 'destructive'
+      });
     } finally {
       setIsLoading(false);
     }
@@ -294,7 +275,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
         setImportedProjects([manualUrl]);
 
         if (onProjectsAdded) {
-          onProjectsAdded(1);
+          onProjectsAdded([result.agent]);
         }
 
         toast({
@@ -360,21 +341,25 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
           console.log('Submitting projects to GitHubService:', newAgentObjects.length);
           await GitHubService.submitProjects(newAgentObjects);
           
-          // Force a refresh of the directory data after submission
-          console.log('Refreshing directory data...');
-          await GitHubService.refreshAgentData();
+          // CRITICAL: Get all projects, including the newly added ones
+          console.log('Getting ALL projects including new ones...');
+          const allProjects = await GitHubService.refreshAgentData();
           
-          // Notify the parent component about the added projects
-          if (onProjectsAdded) {
-            console.log('Notifying parent of added projects');
-            onProjectsAdded(newAgentObjects.length);
-          }
-
-          // Show success toast
+          // Success toast
           toast({
-            title: 'Projects Added',
+            title: 'Import Complete',
             description: `Successfully added ${newAgentObjects.length} projects to the directory.`,
           });
+          
+          // Call the parent component with ALL projects to guarantee update
+          if (onProjectsAdded) {
+            console.log('CRITICAL: Passing ALL projects to parent:', allProjects.length);
+            onProjectsAdded(allProjects);
+          } else {
+            console.error('WARNING: onProjectsAdded callback is not defined!');
+            // Force page reload if callback is missing
+            window.location.reload();
+          }
           
           // Final cleanup and close
           setIsLoading(false);

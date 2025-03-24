@@ -218,15 +218,41 @@ export const REAL_PROJECTS: Agent[] = [
 // Data store for user-submitted projects (temporary until saved to server)
 let USER_SUBMITTED_PROJECTS: Agent[] = [];
 
+// Cache for currently loaded agents to avoid repetitive Supabase calls
+let cachedAgents: Agent[] = [];
+
 /**
  * Get all projects from Supabase with fallback to REAL_PROJECTS
  */
 async function getAllProjects(): Promise<Agent[]> {
   try {
-    console.log('Getting all projects...');
-    return await supabaseService.getAllProjects();
+    // Try to load data from Supabase first
+    let data: Agent[] = [];
+    
+    try {
+      // Ensure projects table exists
+      await supabaseService.ensureProjectsTable();
+      
+      // Try to get projects from Supabase
+      data = await supabaseService.getAllProjects();
+      console.log(`Loaded ${data.length} projects from database`);
+    } catch (supabaseError) {
+      console.log('Could not load from database, using fallback');
+      // Fall back to REAL_PROJECTS if Supabase fails
+    }
+    
+    // If no data from Supabase or if array is empty, use REAL_PROJECTS as fallback
+    if (!data || data.length === 0) {
+      console.log('Using REAL_PROJECTS fallback');
+      data = REAL_PROJECTS;
+    }
+    
+    // Important: Update cached data in memory for immediate access
+    cachedAgents = [...data];
+    
+    return data;
   } catch (error) {
-    console.error('Error getting all projects:', error);
+    console.log('Error getting all projects, using fallback data');
     return REAL_PROJECTS;
   }
 }
@@ -242,9 +268,53 @@ async function addUserSubmittedProjects(newProjects: Agent[]): Promise<void> {
     }
     
     console.log(`Adding ${newProjects.length} user-submitted projects`);
-    await supabaseService.addProjects(newProjects);
+    
+    // First ensure the projects table exists
+    await supabaseService.ensureProjectsTable();
+    
+    // Then add the projects
+    const addedCount = await supabaseService.addProjects(newProjects);
+    console.log(`Successfully added ${addedCount} projects to database`);
+    
+    // Store the projects in localStorage as a fallback
+    try {
+      // Get existing projects from localStorage
+      const existingProjects = localStorage.getItem('directory_projects');
+      let projectsArray = existingProjects ? JSON.parse(existingProjects) : [];
+      
+      // Add new projects
+      projectsArray = [...projectsArray, ...newProjects];
+      
+      // Remove duplicates by URL
+      const uniqueProjects = [];
+      const urls = new Set();
+      
+      for (const project of projectsArray) {
+        if (!urls.has(project.url)) {
+          urls.add(project.url);
+          uniqueProjects.push(project);
+        }
+      }
+      
+      // Save back to localStorage
+      localStorage.setItem('directory_projects', JSON.stringify(uniqueProjects));
+      console.log(`Saved ${uniqueProjects.length} projects to localStorage`);
+    } catch (localError) {
+      console.log('Error saving to localStorage:', localError);
+    }
   } catch (error) {
-    console.error('Error adding user-submitted projects:', error);
+    console.log('Error adding user-submitted projects, using local storage instead');
+    
+    // Fallback to localStorage if Supabase fails
+    try {
+      const existingProjects = localStorage.getItem('directory_projects');
+      let projectsArray = existingProjects ? JSON.parse(existingProjects) : [];
+      projectsArray = [...projectsArray, ...newProjects];
+      localStorage.setItem('directory_projects', JSON.stringify(projectsArray));
+      console.log(`Saved ${newProjects.length} projects to localStorage as fallback`);
+    } catch (localError) {
+      console.log('Error saving to localStorage fallback:', localError);
+    }
   }
 }
 
@@ -287,8 +357,14 @@ export class GitHubService {
     return projects.map(project => project.url);
   };
   
-  static getAgentData = async (): Promise<{timestamp: string, agents: Agent[]}> => {
+  static getAgentData = async (token?: string): Promise<{timestamp: string, agents: Agent[]}> => {
     try {
+      // Save token to localStorage if provided
+      if (token && token.trim()) {
+        localStorage.setItem('github_token', token.trim());
+        console.log('Updated GitHub token in localStorage');
+      }
+      
       // Ensure we get all agents consistently across browsers
       console.log('Getting agent data...');
       const agents = await GitHubService.fetchAgents();
@@ -381,13 +457,16 @@ export class GitHubService {
       
       console.log(`Processing ${batches.length} batches of projects`);
       
+      let totalProcessed = 0;
+      
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
         console.log(`Processing batch ${i+1} of ${batches.length} (${batch.length} projects)`);
         
         try {
           await addUserSubmittedProjects(batch);
-          console.log(`Successfully processed batch ${i+1}`);
+          totalProcessed += batch.length;
+          console.log(`Successfully processed batch ${i+1} (running total: ${totalProcessed})`);
         } catch (batchError) {
           console.error(`Error processing batch ${i+1}:`, batchError);
           // Continue with next batch even if this one failed
@@ -399,7 +478,16 @@ export class GitHubService {
         }
       }
       
-      console.log('All batches processed');
+      console.log(`All batches processed (${totalProcessed} total projects)`);
+      
+      // CRITICAL: After all batches are processed, clear the in-memory cache to force a fresh load
+      cachedAgents = [];
+      
+      // Also clear window.__AGENT_CACHE__ if it exists
+      if (typeof window !== 'undefined' && window.__AGENT_CACHE__) {
+        window.__AGENT_CACHE__.agents = null;
+        console.log('Cleared window.__AGENT_CACHE__');
+      }
     } catch (error) {
       console.error('Error submitting projects:', error);
       throw error; // Re-throw to allow proper error handling upstream
@@ -413,14 +501,49 @@ export class GitHubService {
     try {
       console.log('Refreshing agent data...');
       
-      // Force a fresh data fetch from Supabase
-      const freshData = await supabaseService.getAllProjects();
-      console.log(`Refreshed data with ${freshData.length} projects`);
+      // Try to load data from Supabase directly without calling getAllProjects
+      let freshData: Agent[] = [];
+      
+      try {
+        // Ensure projects table exists
+        await supabaseService.ensureProjectsTable();
+        
+        // Try to get projects from Supabase directly
+        freshData = await supabaseService.getAllProjects();
+        console.log(`Refreshed data with ${freshData.length} projects from database`);
+      } catch (supabaseError) {
+        console.log('Could not refresh from database, using localStorage');
+        // Fall back to localStorage if Supabase fails
+      }
+      
+      // If no data from Supabase or if array is empty, try localStorage fallback
+      if (!freshData || freshData.length === 0) {
+        try {
+          const localProjects = localStorage.getItem('directory_projects');
+          if (localProjects) {
+            const parsedProjects = JSON.parse(localProjects);
+            if (Array.isArray(parsedProjects) && parsedProjects.length > 0) {
+              freshData = parsedProjects;
+              console.log(`Using ${freshData.length} projects from localStorage`);
+            }
+          }
+        } catch (localError) {
+          console.log('Error reading from localStorage fallback');
+        }
+      }
+      
+      // If still no data, use REAL_PROJECTS as final fallback
+      if (!freshData || freshData.length === 0) {
+        console.log('Using REAL_PROJECTS fallback');
+        freshData = REAL_PROJECTS;
+      }
+      
+      // Important: Update cached data in memory for immediate access
+      cachedAgents = [...freshData];
       
       return freshData;
     } catch (error) {
-      console.error('Error refreshing agent data:', error);
-      // Return REAL_PROJECTS as a fallback if refresh fails
+      console.log('Error refreshing agent data, using fallback data');
       return REAL_PROJECTS;
     }
   }

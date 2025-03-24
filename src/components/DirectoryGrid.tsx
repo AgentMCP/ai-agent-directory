@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import AgentCard from './AgentCard';
 import { Agent, FilterOptions, SortOption } from '../types';
 import Filters from './Filters';
-import { GitHubService } from '../services/GitHubService';
+import { GitHubService, REAL_PROJECTS } from '../services/GitHubService';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { 
@@ -18,6 +18,10 @@ import { toast } from '@/components/ui/use-toast';
 import AddProjectForm from './AddProjectForm';
 import BulkImportModal from './BulkImportModal';
 import { Search, PlusCircle, RefreshCw, Sparkles, Database, Plus } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from './ui/alert';
+import { AlertCircle } from 'lucide-react';
+import { Input } from './ui/input';
+import { Github } from 'lucide-react';
 
 interface DirectoryGridProps {
   initialSearchQuery?: string;
@@ -36,11 +40,12 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
     sort: 'stars',
     searchQuery: initialSearchQuery,
   });
+  const [error, setError] = useState<string | null>(null);
   const directoryRef = useRef<HTMLDivElement>(null);
   
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const pageSize = 24;
+  const pageSize = 50;
   
   const totalPages = useMemo(() => {
     if (filteredAgents.length === 0) return 1;
@@ -51,77 +56,129 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
     return paginateData(filteredAgents, page, pageSize);
   }, [filteredAgents, page, pageSize]);
 
+  // GitHub token state
+  const [githubToken, setGithubToken] = useState<string>('');
+  const [showTokenInput, setShowTokenInput] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Check if token exists in localStorage on component mount
+    const savedToken = localStorage.getItem('github_token') || '';
+    setGithubToken(savedToken);
+  }, []);
+
+  const handleSaveToken = () => {
+    if (githubToken.trim()) {
+      localStorage.setItem('github_token', githubToken.trim());
+      toast({
+        title: "GitHub Token Saved",
+        description: "Your GitHub token has been saved. The application will now use it for API requests.",
+      });
+      setShowTokenInput(false);
+      // Refresh data with the new token
+      handleRefresh();
+    } else {
+      toast({
+        title: "Error",
+        description: "Please enter a valid GitHub token.",
+        variant: "destructive",
+      });
+    }
+  };
+
   useEffect(() => {
     const loadAgents = async () => {
       setIsLoading(true);
+      setError(null);
       try {
-        setAgents(Array(pageSize).fill(null).map((_, i) => ({
+        setAgents(Array(pageSize).fill(null).map((_, i: number) => ({
           id: `loading-${i}`,
-          name: '',
-          description: '',
-          url: '',
+          name: 'Loading...',
+          description: 'Loading agent information...',
           stars: 0,
           forks: 0,
-          language: '',
-          license: '',
-          updated: '',
-          isLoading: true,
-          topics: [],
+          url: '',
           owner: '',
-          avatar: ''
+          avatar: '',
+          language: '',
+          updated: '',
+          topics: [],
+          license: '',
+          isLoading: true
         })));
 
         console.log('Fetching agent data...');
-        const data = await GitHubService.getAgentData();
+        let fetchedAgents: Agent[] = [];
         
-        if (!data || !data.agents) {
-          throw new Error('No agent data returned');
+        try {
+          console.log('DirectoryGrid: Fetching agents from GitHubService');
+          
+          // First try to use fallback data to ensure something displays
+          fetchedAgents = REAL_PROJECTS;
+          
+          // Then try to get API data if a token is available
+          if (localStorage.getItem('github_token')) {
+            const agentData = await GitHubService.getAgentData(githubToken);
+            if (agentData && agentData.agents && agentData.agents.length > 0) {
+              fetchedAgents = agentData.agents;
+              console.log(`DirectoryGrid: Fetched ${fetchedAgents.length} agents from service`);
+            }
+          } else {
+            console.log('No GitHub token available. Using preloaded data.');
+          }
+        } catch (fetchError: any) {
+          console.error('Error fetching agents:', fetchError);
+          setError('Failed to load agent data. Using fallback data.');
+          
+          // Ensure we have fallback data
+          if (!fetchedAgents || fetchedAgents.length === 0) {
+            console.log('DirectoryGrid: Using fallback data');
+            fetchedAgents = REAL_PROJECTS;
+          }
         }
         
-        console.log(`Successfully loaded ${data.agents.length} agents from GitHubService`);
+        // Ensure we have valid data
+        if (!Array.isArray(fetchedAgents)) {
+          console.error('Invalid agent data received:', fetchedAgents);
+          fetchedAgents = [];
+        }
         
         // Extract unique languages and licenses for filtering
         const uniqueLanguages = Array.from(new Set(
-          data.agents
+          fetchedAgents
             .map(agent => agent.language)
             .filter(Boolean)
         )).sort();
         
         const uniqueLicenses = Array.from(new Set(
-          data.agents
+          fetchedAgents
             .map(agent => agent.license)
             .filter(Boolean)
         )).sort();
         
-        console.log(`Loaded ${data.agents.length} agents with ${uniqueLanguages.length} languages and ${uniqueLicenses.length} licenses`);
+        console.log(`Loaded ${fetchedAgents.length} agents with ${uniqueLanguages.length} languages and ${uniqueLicenses.length} licenses`);
         setLanguages(uniqueLanguages);
         setLicenses(uniqueLicenses);
-        setAgents(data.agents);
-        setFilteredAgents(data.agents);
+        setAgents(fetchedAgents);
+        setFilteredAgents(fetchedAgents);
         
         // Apply initial search query if provided
         if (initialSearchQuery) {
           handleSearch(initialSearchQuery);
         }
-      } catch (error) {
-        console.error('Error loading agents:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load AI agents. Please try again later.",
-          variant: "destructive",
-        });
-        // Set empty arrays to prevent undefined errors
+      } catch (err: any) {
+        console.error('Error in loadAgents:', err);
+        setError('Failed to load agent data. Please try again later.');
+        
+        // Set empty arrays to prevent further errors
         setAgents([]);
         setFilteredAgents([]);
-        setLanguages([]);
-        setLicenses([]);
       } finally {
         setIsLoading(false);
       }
     };
 
     loadAgents();
-  }, [initialSearchQuery]);
+  }, [initialSearchQuery, githubToken]);
 
   // Apply filtering and sorting when agents or filter options change
   useEffect(() => {
@@ -134,65 +191,82 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
     }
     
     try {
-      let filtered = [...agents];
+      // Only filter if we have agents to filter
+      if (!agents || agents.length === 0) {
+        setFilteredAgents([]);
+        return;
+      }
       
-      // Apply search filter first
+      console.log(`DirectoryGrid: Filtering ${agents.length} agents with search "${filterOptions.searchQuery}" and language "${filterOptions.language}"`);
+      
+      // Step 1: Apply search filter if searchQuery exists
+      let filtered = agents;
+      
       if (filterOptions.searchQuery && filterOptions.searchQuery.trim() !== '') {
-        console.log("Applying search filter:", filterOptions.searchQuery);
+        const normalizedQuery = filterOptions.searchQuery.toLowerCase().trim();
+        const searchTerms = normalizedQuery.split(/\s+/);
         
-        const searchQuery = filterOptions.searchQuery.toLowerCase().trim();
+        console.log(`DirectoryGrid: Search terms: ${JSON.stringify(searchTerms)}`);
         
         filtered = filtered.filter(agent => {
+          // Ensure agent and its properties exist
           if (!agent || agent.isLoading) return false;
           
-          const nameMatch = agent.name?.toLowerCase().includes(searchQuery);
-          const descMatch = agent.description?.toLowerCase().includes(searchQuery);
-          const langMatch = agent.language?.toLowerCase().includes(searchQuery);
-          const licenseMatch = agent.license?.toLowerCase().includes(searchQuery);
+          const name = agent.name?.toLowerCase() || '';
+          const desc = agent.description?.toLowerCase() || '';
+          const lang = agent.language?.toLowerCase() || '';
+          const license = agent.license?.toLowerCase() || '';
           
-          return nameMatch || descMatch || langMatch || licenseMatch;
+          // Check if any search term matches any of the agent properties
+          return searchTerms.some(term => 
+            name.includes(term) || 
+            desc.includes(term) || 
+            lang.includes(term) ||
+            license.includes(term)
+          );
         });
         
-        console.log(`Search filter applied, ${filtered.length} agents remaining`);
-      } else {
-        console.log("No search query to filter by");
+        console.log(`DirectoryGrid: After search filtering, ${filtered.length} agents remain`);
       }
       
-      // Then apply language filter
+      // Step 2: Apply language filter if selectedLanguage exists
       if (filterOptions.language) {
-        console.log("Applying language filter:", filterOptions.language);
+        const normalizedLanguage = filterOptions.language.toLowerCase();
         
-        filtered = filtered.filter(agent => 
-          agent.language === filterOptions.language
-        );
+        filtered = filtered.filter(agent => {
+          const language = agent.language?.toLowerCase() || '';
+          return language === normalizedLanguage;
+        });
         
-        console.log(`Language filter applied, ${filtered.length} agents remaining`);
+        console.log(`DirectoryGrid: After language filtering, ${filtered.length} agents remain`);
       }
       
-      // Then apply license filter
+      // Step 3: Apply license filter if selectedLicense exists
       if (filterOptions.license) {
-        console.log("Applying license filter:", filterOptions.license);
+        const normalizedLicense = filterOptions.license.toLowerCase();
         
-        filtered = filtered.filter(agent => 
-          agent.license === filterOptions.license
-        );
+        filtered = filtered.filter(agent => {
+          const license = agent.license?.toLowerCase() || '';
+          return license === normalizedLicense;
+        });
         
-        console.log(`License filter applied, ${filtered.length} agents remaining`);
+        console.log(`DirectoryGrid: After license filtering, ${filtered.length} agents remain`);
       }
       
-      // Finally sort
-      console.log("Applying sort:", filterOptions.sort);
-      filtered = sortAgents(filtered, filterOptions.sort);
+      // Step 4: Sort the filtered agents
+      const sorted = sortAgents(filtered, filterOptions.sort);
       
-      console.log(`Final filtered result: ${filtered.length} agents`);
-      setFilteredAgents(filtered);
+      console.log(`DirectoryGrid: After sorting, ${sorted.length} agents available`);
       
-      // Reset to first page when filters change
-      setPage(1);
-    } catch (error) {
-      console.error("Error during filtering:", error);
-      // Fallback to showing all agents if filtering fails
-      setFilteredAgents(agents);
+      // Update state with filtered and sorted agents
+      setFilteredAgents(sorted);
+    } catch (err: any) {
+      console.error('Error filtering agents:', err);
+      setError('Error filtering agent data. Showing all available agents.');
+      
+      // Fall back to showing all agents if filtering fails
+      const sorted = sortAgents(agents, filterOptions.sort);
+      setFilteredAgents(sorted);
     }
   }, [agents, filterOptions]);
 
@@ -207,6 +281,32 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
       default:
         return agents;
     }
+  };
+
+  // Function to apply filters to a list of agents
+  const applyFilters = (agents: Agent[], filters: FilterOptions): Agent[] => {
+    let filtered = [...agents];
+    
+    // Apply language filter
+    if (filters.language) {
+      const normalizedLanguage = filters.language.toLowerCase();
+      filtered = filtered.filter(agent => {
+        const language = agent.language?.toLowerCase() || '';
+        return language === normalizedLanguage;
+      });
+    }
+    
+    // Apply license filter
+    if (filters.license) {
+      const normalizedLicense = filters.license.toLowerCase();
+      filtered = filtered.filter(agent => {
+        const license = agent.license?.toLowerCase() || '';
+        return license === normalizedLicense;
+      });
+    }
+    
+    // Apply sorting
+    return sortAgents(filtered, filters.sort);
   };
 
   const handleSearch = (query: string) => {
@@ -249,16 +349,64 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
       }
       
       // Get fresh data
-      const data = await GitHubService.refreshAgentData();
-      setAgents(data.agents);
-      applyFilters(data.agents, filterOptions);
+      const refreshedData = await GitHubService.getAgentData(githubToken);
+      setAgents(refreshedData.agents);
+      
+      // Apply filters to the new data
+      let filtered = [...refreshedData.agents];
+      if (filterOptions.searchQuery) {
+        // Apply search filtering
+        const normalizedQuery = filterOptions.searchQuery.toLowerCase().trim();
+        const searchTerms = normalizedQuery.split(/\s+/);
+        
+        filtered = filtered.filter(agent => {
+          // Ensure agent and its properties exist
+          if (!agent || agent.isLoading) return false;
+          
+          const name = agent.name?.toLowerCase() || '';
+          const desc = agent.description?.toLowerCase() || '';
+          const lang = agent.language?.toLowerCase() || '';
+          const license = agent.license?.toLowerCase() || '';
+          
+          // Check if any search term matches any of the agent properties
+          return searchTerms.some(term => 
+            name.includes(term) || 
+            desc.includes(term) || 
+            lang.includes(term) ||
+            license.includes(term)
+          );
+        });
+      }
+      
+      if (filterOptions.language) {
+        const normalizedLanguage = filterOptions.language.toLowerCase();
+        
+        filtered = filtered.filter(agent => {
+          const language = agent.language?.toLowerCase() || '';
+          return language === normalizedLanguage;
+        });
+      }
+      
+      if (filterOptions.license) {
+        const normalizedLicense = filterOptions.license.toLowerCase();
+        
+        filtered = filtered.filter(agent => {
+          const license = agent.license?.toLowerCase() || '';
+          return license === normalizedLicense;
+        });
+      }
+      
+      // Sort the filtered agents
+      const sorted = sortAgents(filtered, filterOptions.sort);
+      
+      setFilteredAgents(sorted);
       
       toast({
         title: "Refresh Complete",
-        description: `Successfully refreshed ${data.agents.length} projects.`,
+        description: `Successfully refreshed ${refreshedData.agents.length} projects.`,
         variant: "default",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error refreshing data:', error);
       toast({
         title: "Refresh Failed",
@@ -270,120 +418,76 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
     }
   };
 
-  const applyFilters = (agents: Agent[], filterOptions: FilterOptions) => {
-    let filtered = [...agents];
+  const handleBulkImport = async (projects: any) => {
+    console.log("CRITICAL: Received bulk import with:", Array.isArray(projects) ? projects.length : "Not an array");
     
-    // Apply search filter first
-    if (filterOptions.searchQuery && filterOptions.searchQuery.trim() !== '') {
-      console.log("Applying search filter:", filterOptions.searchQuery);
-      
-      const searchQuery = filterOptions.searchQuery.toLowerCase().trim();
-      
-      filtered = filtered.filter(agent => {
-        if (!agent || agent.isLoading) return false;
-        
-        const nameMatch = agent.name?.toLowerCase().includes(searchQuery);
-        const descMatch = agent.description?.toLowerCase().includes(searchQuery);
-        const langMatch = agent.language?.toLowerCase().includes(searchQuery);
-        const licenseMatch = agent.license?.toLowerCase().includes(searchQuery);
-        
-        return nameMatch || descMatch || langMatch || licenseMatch;
-      });
-      
-      console.log(`Search filter applied, ${filtered.length} agents remaining`);
-    } else {
-      console.log("No search query to filter by");
-    }
-    
-    // Then apply language filter
-    if (filterOptions.language) {
-      console.log("Applying language filter:", filterOptions.language);
-      
-      filtered = filtered.filter(agent => 
-        agent.language === filterOptions.language
-      );
-      
-      console.log(`Language filter applied, ${filtered.length} agents remaining`);
-    }
-    
-    // Then apply license filter
-    if (filterOptions.license) {
-      console.log("Applying license filter:", filterOptions.license);
-      
-      filtered = filtered.filter(agent => 
-        agent.license === filterOptions.license
-      );
-      
-      console.log(`License filter applied, ${filtered.length} agents remaining`);
-    }
-    
-    // Finally sort
-    console.log("Applying sort:", filterOptions.sort);
-    filtered = sortAgents(filtered, filterOptions.sort);
-    
-    console.log(`Final filtered result: ${filtered.length} agents`);
-    setFilteredAgents(filtered);
-  };
-
-  // Handle adding a project
-  const handleProjectAdded = async (url: string) => {
-    try {
-      const newAgent = await GitHubService.addProject(url);
-      
-      if (newAgent) {
-        setAgents(prevAgents => {
-          // Check if the agent already exists
-          const exists = prevAgents.some(agent => agent.url === newAgent.url);
-          if (exists) {
-            toast({
-              title: "Already exists",
-              description: "This project is already in the directory.",
-            });
-            return prevAgents;
-          }
-          
-          // Add the new agent
-          const updated = [newAgent, ...prevAgents];
-          return updated;
-        });
-        
-        toast({
-          title: "Success",
-          description: "Project added successfully!",
-        });
+    // Force-clear any possible cache
+    if (typeof window !== 'undefined') {
+      if (window.__AGENT_CACHE__) {
+        window.__AGENT_CACHE__ = null;
       }
-    } catch (error) {
-      console.error('Error adding project:', error);
-      toast({
-        title: "Error",
-        description: "Failed to add project. Please check the URL and try again.",
-        variant: "destructive",
-      });
+      localStorage.removeItem('directory_projects');
     }
+    
+    // If we received projects directly, use them immediately
+    if (Array.isArray(projects) && projects.length > 0) {
+      console.log("CRITICAL: Using directly provided projects:", projects.length);
+      setAgents(projects);
+      setFilteredAgents(projects);
+      return;
+    }
+    
+    // Otherwise, force a complete reload of the page to guarantee fresh data
+    console.log("CRITICAL: Projects not provided directly, forcing page reload");
+    window.location.reload();
   };
 
-  // Handle adding multiple projects
-  const handleBulkProjectsAdded = (count: number) => {
-    // Update the UI after bulk projects are added
-    if (count > 0) {
-      toast({
-        title: "Success!",
-        description: `Added ${count} new projects to the directory.`,
-        variant: "default",
-      });
-      
-      // Refresh the data
-      handleRefresh();
-    }
-  };
+  // Function to show/hide the bulk import modal
+  const [showBulkImport, setShowBulkImport] = useState(false);
 
   // Get list of existing project URLs to prevent duplicates
   const existingProjectUrls = useMemo(() => {
     return agents.map(agent => agent.url);
   }, [agents]);
 
-  const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false);
-  const [isBulkImportModalOpen, setIsBulkImportModalOpen] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmitProject = async (url: string) => {
+    if (isSubmitting) return;
+    
+    setIsSubmitting(true);
+    
+    try {
+      const result = await GitHubService.addProject(url);
+      
+      if (result.success && result.agent) {
+        setAgents(prevAgents => [result.agent, ...prevAgents]);
+        
+        toast({
+          title: "Project Added",
+          description: `Successfully added ${result.agent.name} to the directory.`,
+        });
+        
+        setShowAddForm(false);
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "Failed to add project.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error('Error adding project:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "An unknown error occurred.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div id="directory" ref={directoryRef} className="py-6 px-4 bg-gradient-to-b from-[#0e1129] to-[#1e2344]">
@@ -439,7 +543,7 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
                 variant="outline" 
                 size="sm" 
                 className="h-7 px-2 text-xs bg-[#0e1129] border-white/10 hover:bg-[#161b33] hover:text-white hover:border-white/20 text-white"
-                onClick={() => setIsAddProjectModalOpen(true)}
+                onClick={() => setShowAddForm(true)}
               >
                 <Plus className="h-3 w-3 mr-1" />
                 Add Project
@@ -448,14 +552,59 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
                 variant="outline" 
                 size="sm" 
                 className="h-7 px-2 text-xs bg-[#0e1129] border-white/10 hover:bg-[#161b33] hover:text-white hover:border-white/20 text-white"
-                onClick={() => setIsBulkImportModalOpen(true)}
+                onClick={() => setShowBulkImport(true)}
               >
                 <PlusCircle className="h-3 w-3 mr-1" />
                 Bulk Import
               </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 px-2 text-xs bg-[#0e1129] border-white/10 hover:bg-[#161b33] hover:text-white hover:border-white/20 text-white"
+                onClick={() => setShowTokenInput(!showTokenInput)}
+              >
+                <Github className="h-3 w-3 mr-1" />
+                GitHub Token
+              </Button>
             </div>
           </div>
         </div>
+        
+        {/* GitHub Token Configuration */}
+        {showTokenInput && (
+          <div className="mt-2 p-4 bg-[#1a1f36] rounded-lg border border-white/10 max-w-md">
+            <p className="text-sm text-gray-300 mb-2">
+              Add your GitHub Personal Access Token to enable API searches.
+              <a 
+                href="https://github.com/settings/tokens" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="ml-1 text-blue-400 hover:underline"
+              >
+                Generate token here
+              </a>
+            </p>
+            <div className="flex gap-2">
+              <Input
+                type="password"
+                value={githubToken}
+                onChange={(e) => setGithubToken(e.target.value)}
+                placeholder="GitHub Personal Access Token"
+                className="flex-1"
+              />
+              <Button 
+                onClick={handleSaveToken}
+                size="sm" 
+                className="px-2 text-xs"
+              >
+                Save
+              </Button>
+            </div>
+            <p className="mt-2 text-xs text-gray-400">
+              Token is stored in your browser's localStorage and is not sent to our servers.
+            </p>
+          </div>
+        )}
         
         {/* Filters row */}
         <div className="flex items-center justify-between mb-4 gap-3">
@@ -520,6 +669,35 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
           </div>
         </div>
         
+        {/* Add project form */}
+        {showAddForm && (
+          <div className="mb-8 p-6 bg-[#1a1f36] rounded-xl border border-white/10">
+            <AddProjectForm 
+              onProjectAdded={handleSubmitProject}
+              onClose={() => setShowAddForm(false)}
+              isOpen={true}
+            />
+          </div>
+        )}
+        
+        {/* Bulk import modal */}
+        {showBulkImport && (
+          <BulkImportModal
+            isOpen={showBulkImport}
+            onClose={() => setShowBulkImport(false)}
+            onProjectsAdded={handleBulkImport}
+            existingProjectUrls={existingProjectUrls}
+          />
+        )}
+        
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        
         {filteredAgents.length === 0 && !isLoading ? (
           <div className="flex flex-col items-center justify-center py-16 text-center bg-[#1a1f36] rounded-xl border border-white/10">
             <div className="mb-4 text-white/30">
@@ -550,21 +728,6 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
           </>
         )}
       </div>
-      {isAddProjectModalOpen && (
-        <AddProjectForm 
-          isOpen={isAddProjectModalOpen}
-          onProjectAdded={handleProjectAdded}
-          onClose={() => setIsAddProjectModalOpen(false)}
-        />
-      )}
-      {isBulkImportModalOpen && (
-        <BulkImportModal 
-          isOpen={isBulkImportModalOpen}
-          onProjectsAdded={handleBulkProjectsAdded}
-          existingProjectUrls={existingProjectUrls}
-          onClose={() => setIsBulkImportModalOpen(false)}
-        />
-      )}
     </div>
   );
 };

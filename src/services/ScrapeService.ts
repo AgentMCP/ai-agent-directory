@@ -71,6 +71,28 @@ const ScrapeService = {
     const maxResults = isFirstImport ? 250 : 100;
     
     try {
+      // Try to get token from localStorage but proceed even if missing
+      const githubToken = localStorage.getItem('github_token') || '';
+      console.log(`Search with${githubToken ? '' : 'out'} GitHub token`);
+      
+      // Try GitHub API first if token is available
+      if (githubToken) {
+        try {
+          console.log('Attempting GitHub API search with token');
+          const apiResults = await this.searchWithGitHubAPI(query, githubToken);
+          if (apiResults && apiResults.length > 0) {
+            console.log(`GitHub API search successful: ${apiResults.length} results`);
+            return apiResults;
+          }
+          console.log('GitHub API search returned no results, falling back');
+        } catch (apiError) {
+          console.error('GitHub API search failed:', apiError);
+          console.log('Falling back to direct search');
+        }
+      } else {
+        console.log('No GitHub token available, skipping API search');
+      }
+      
       // Search terms related to AI Agents and MCP - more specific to ensure quality results
       const searchTerms = [
         'AI Agent Framework',
@@ -219,18 +241,54 @@ const ScrapeService = {
    */
   async searchGitHub(query: string): Promise<any[]> {
     try {
+      console.log(`Searching GitHub for: ${query}`);
+      
+      // Try to get token from localStorage but proceed even if missing
+      const githubToken = localStorage.getItem('github_token') || '';
+      console.log(`Search with${githubToken ? '' : 'out'} GitHub token`);
+      
+      // Try GitHub API first if token is available
+      if (githubToken) {
+        try {
+          console.log('Attempting GitHub API search with token');
+          const apiResults = await this.searchWithGitHubAPI(query, githubToken);
+          if (apiResults && apiResults.length > 0) {
+            console.log(`GitHub API search successful: ${apiResults.length} results`);
+            return apiResults;
+          }
+          console.log('GitHub API search returned no results, falling back');
+        } catch (apiError) {
+          console.error('GitHub API search failed:', apiError);
+          console.log('Falling back to direct search');
+        }
+      } else {
+        console.log('No GitHub token available, skipping API search');
+      }
+      
+      // If no token is available, return empty results
+      if (!githubToken) {
+        console.log('No GitHub token available for API search, using fallback data');
+        return this.generateSimulatedResults(query);
+      }
+      
+      console.log('Using GitHub token for API search');
       const searchResults = [];
       
       // Try GitHub API with fetch
       try {
         // GitHub search API (if token is available)
-        const githubToken = localStorage.getItem('github_token') || '';
         const headers: Record<string, string> = {
           'Accept': 'application/vnd.github.v3+json'
         };
         
         if (githubToken) {
-          headers['Authorization'] = `Bearer ${githubToken}`;
+          // Try with proper GitHub token format - no 'token' or 'Bearer' prefix as it might vary
+          headers['Authorization'] = githubToken.startsWith('ghp_') ? `token ${githubToken}` : 
+                                    (githubToken.startsWith('github_pat_') ? `token ${githubToken}` : githubToken);
+          
+          console.log('Using Authorization header:', 
+                     headers['Authorization'].substring(0, 10) + '...' + 
+                     headers['Authorization'].substring(headers['Authorization'].length - 5));
         }
         
         // Use GitHub search API to find repositories
@@ -244,6 +302,7 @@ const ScrapeService = {
         
         // First check if the fetch will succeed (CORS check)
         try {
+          console.log(`Fetching from GitHub API: ${apiUrl}`);
           const response = await fetch(apiUrl, { 
             method: 'GET',
             headers,
@@ -252,6 +311,7 @@ const ScrapeService = {
           
           if (response.ok) {
             const data = await response.json();
+            console.log(`GitHub API returned ${data?.items?.length || 0} results`);
             
             if (data && data.items) {
               for (const item of data.items) {
@@ -275,63 +335,100 @@ const ScrapeService = {
             // If we get a 401 error, the token might be invalid
             if (response.status === 401 && githubToken) {
               console.error('GitHub token appears to be invalid');
-              // Clear the invalid token
-              localStorage.removeItem('github_token');
+              // Don't clear the token automatically - let the user manage it
+              // localStorage.removeItem('github_token');
             }
             throw new Error(`GitHub API returned ${response.status}: ${response.statusText}`);
           }
-        } catch (fetchError) {
-          console.error('CORS or fetch error:', fetchError);
-          
-          // Try a simpler fetch without the Authorization header if there was a CORS issue
-          if (githubToken && fetchError.toString().includes('CORS')) {
-            console.log('Trying without authorization header due to CORS issues');
-            
-            // Use the same URL with language filters
-            const simpleResponse = await fetch(apiUrl, { 
-              method: 'GET',
-              headers: { 'Accept': 'application/vnd.github.v3+json' }
-            });
-            
-            if (simpleResponse.ok) {
-              const data = await simpleResponse.json();
-              
-              if (data && data.items) {
-                for (const item of data.items) {
-                  // Add all items, we'll filter later
-                  searchResults.push({
-                    url: item.html_url,
-                    name: item.name,
-                    description: item.description || '',
-                    owner: item.owner.login,
-                    stars: item.stargazers_count,
-                    forks: item.forks_count,
-                    topics: item.topics || [],
-                    language: item.language,
-                    license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
-                    updated: item.updated_at
-                  });
-                }
-                return searchResults;
-              }
-            }
-          }
-          
-          throw fetchError;
+        } catch (error) {
+          console.error('Error searching GitHub API:', error);
+          // Fallback to simulated results if API fails
+          console.log('Falling back to simulated results');
+          const simulatedResults = this.generateSimulatedResults(query);
+          searchResults.push(...simulatedResults);
         }
-      } catch (error) {
-        console.error('Error searching GitHub API:', error);
         
-        // Fallback to simulated results if API fails
-        console.log('Falling back to simulated results');
-        const simulatedResults = this.generateSimulatedResults(query);
-        searchResults.push(...simulatedResults);
+        return searchResults;
+      } catch (error) {
+        console.error('Error in GitHub search:', error);
+        return this.generateSimulatedResults(query);
       }
-      
-      return searchResults;
     } catch (error) {
       console.error('Error in GitHub search:', error);
       return this.generateSimulatedResults(query);
+    }
+  },
+  
+  /**
+   * Search GitHub API with token
+   * @param query Search query
+   * @param token GitHub token
+   * @returns Array of repository information
+   */
+  async searchWithGitHubAPI(query: string, token: string): Promise<any[]> {
+    try {
+      console.log(`Searching GitHub API for: ${query}`);
+      
+      // GitHub search API (if token is available)
+      const headers: Record<string, string> = {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': token.startsWith('ghp_') ? `token ${token}` : 
+                        (token.startsWith('github_pat_') ? `token ${token}` : token)
+      };
+      
+      // Use GitHub search API to find repositories
+      const searchTerms = query.split(' ').filter(term => term.length > 2);
+      const queryString = searchTerms.join('+');
+      
+      // Add language filter to the query to prioritize English content
+      // We'll search for a high number of results (up to 100 per page)
+      // Remove strict language filters to get more results
+      const apiUrl = `https://api.github.com/search/repositories?q=${queryString}+in:name,description,readme&sort=stars&order=desc&per_page=100`;
+      
+      // First check if the fetch will succeed (CORS check)
+      try {
+        console.log(`Fetching from GitHub API: ${apiUrl}`);
+        const response = await fetch(apiUrl, { 
+          method: 'GET',
+          headers,
+          mode: 'cors'
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`GitHub API returned ${data?.items?.length || 0} results`);
+          
+          if (data && data.items) {
+            return data.items.map(item => ({
+              url: item.html_url,
+              name: item.name,
+              description: item.description || '',
+              owner: item.owner.login,
+              stars: item.stargazers_count,
+              forks: item.forks_count,
+              topics: item.topics || [],
+              language: item.language,
+              license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
+              updated: item.updated_at
+            }));
+          }
+        } else {
+          console.error(`GitHub API returned status ${response.status}`);
+          // If we get a 401 error, the token might be invalid
+          if (response.status === 401 && token) {
+            console.error('GitHub token appears to be invalid');
+            // Don't clear the token automatically - let the user manage it
+            // localStorage.removeItem('github_token');
+          }
+          throw new Error(`GitHub API returned ${response.status}: ${response.statusText}`);
+        }
+      } catch (error) {
+        console.error('Error searching GitHub API:', error);
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error in GitHub API search:', error);
+      throw error;
     }
   },
   
@@ -891,13 +988,19 @@ const ScrapeService = {
 
       // Try to fetch repository details from GitHub API
       try {
-        const githubToken = localStorage.getItem('github_token') || '';
+        const githubToken = localStorage.getItem('github_token') || import.meta.env.VITE_GITHUB_TOKEN || import.meta.env.NEXT_PUBLIC_GITHUB_TOKEN || '';
         const headers: Record<string, string> = {
           'Accept': 'application/vnd.github.v3+json'
         };
         
         if (githubToken) {
-          headers['Authorization'] = `Bearer ${githubToken}`;
+          // Try with proper GitHub token format - no 'token' or 'Bearer' prefix as it might vary
+          headers['Authorization'] = githubToken.startsWith('ghp_') ? `token ${githubToken}` : 
+                                    (githubToken.startsWith('github_pat_') ? `token ${githubToken}` : githubToken);
+          
+          console.log('Using Authorization header:', 
+                     headers['Authorization'].substring(0, 10) + '...' + 
+                     headers['Authorization'].substring(headers['Authorization'].length - 5));
         }
         
         const apiUrl = `https://api.github.com/repos/${owner}/${name}`;
