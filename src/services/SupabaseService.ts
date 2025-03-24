@@ -184,6 +184,11 @@ export class SupabaseService {
    * Get all projects, first trying Supabase then falling back to localStorage
    */
   public async getAllProjects(): Promise<Agent[]> {
+    console.log('SupabaseService: Getting all projects from database');
+    
+    let projects: Agent[] = [];
+    let shouldUseFallback = false;
+    
     // Try Supabase first if available
     if (this.isSupabaseAvailable) {
       try {
@@ -193,58 +198,144 @@ export class SupabaseService {
           
         if (error) {
           console.warn('Error fetching projects from Supabase:', error.message);
+          shouldUseFallback = true;
         } else if (data && data.length > 0) {
           console.log(`Retrieved ${data.length} projects from Supabase`);
           
-          // Update localStorage as a cache
+          // Cache in localStorage for offline use
           localStorage.setItem('directory_projects', JSON.stringify(data));
+          
+          // Return the Supabase data directly
           return data;
         } else {
-          console.log('No projects found in Supabase');
+          console.log('No projects found in Supabase, checking localStorage');
+          shouldUseFallback = true;
         }
       } catch (error) {
         console.warn('Error in Supabase getAllProjects:', error);
+        shouldUseFallback = true;
       }
+    } else {
+      shouldUseFallback = true;
     }
     
-    // Fallback to localStorage
-    try {
-      const localData = localStorage.getItem('directory_projects');
-      if (localData) {
-        const projects = JSON.parse(localData);
-        if (Array.isArray(projects) && projects.length > 0) {
-          console.log(`Using ${projects.length} projects from localStorage`);
-          return projects;
+    // Fallback to localStorage if needed
+    if (shouldUseFallback) {
+      try {
+        const localData = localStorage.getItem('directory_projects');
+        if (localData) {
+          const localProjects = JSON.parse(localData);
+          if (Array.isArray(localProjects) && localProjects.length > 0) {
+            console.log(`Using ${localProjects.length} projects from localStorage`);
+            projects = localProjects;
+            
+            // If we found data in localStorage but not in Supabase, try to sync it back to Supabase
+            if (this.isSupabaseAvailable && projects.length > 0) {
+              console.log('Syncing localStorage data back to Supabase');
+              this.syncLocalStorageToSupabase(projects);
+            }
+            
+            return projects;
+          }
         }
+      } catch (e) {
+        console.error('Error reading from localStorage:', e);
       }
-    } catch (e) {
-      console.error('Error reading from localStorage:', e);
+      
+      // Final fallback to hardcoded projects
+      console.log('No projects in localStorage, using hardcoded REAL_PROJECTS');
+      projects = REAL_PROJECTS;
+      
+      // Save to Supabase and localStorage
+      this.bootstrapDefaultData();
     }
     
-    // Final fallback to hardcoded projects
-    console.log('No projects in localStorage, using hardcoded REAL_PROJECTS');
+    return projects;
+  }
+
+  /**
+   * Sync localStorage data back to Supabase
+   * This helps recover from scenarios where data is in localStorage but not in Supabase
+   */
+  private async syncLocalStorageToSupabase(projects: Agent[]): Promise<void> {
+    if (!this.isSupabaseAvailable || !projects.length) return;
     
-    // If we're using the fallback projects and Supabase is available,
-    // let's populate Supabase with these as a starter set
+    try {
+      // First get what's already in Supabase to avoid duplicates
+      const { data, error } = await supabase
+        .from(PROJECTS_TABLE)
+        .select('url');
+        
+      if (error) {
+        console.warn('Error checking existing Supabase entries:', error.message);
+        return;
+      }
+      
+      // Create a set of existing URLs for quick lookup
+      const existingUrls = new Set(data?.map(item => item.url?.toLowerCase() || '') || []);
+      
+      // Filter to only projects that don't exist in Supabase
+      const newProjects = projects.filter(project => 
+        project.url && !existingUrls.has(project.url.toLowerCase())
+      );
+      
+      if (newProjects.length === 0) {
+        console.log('No new projects to sync to Supabase');
+        return;
+      }
+      
+      // Insert the new projects
+      const { error: insertError } = await supabase
+        .from(PROJECTS_TABLE)
+        .insert(newProjects);
+        
+      if (insertError) {
+        console.warn('Error syncing projects to Supabase:', insertError.message);
+      } else {
+        console.log(`Successfully synced ${newProjects.length} projects to Supabase`);
+      }
+    } catch (error) {
+      console.warn('Error in syncLocalStorageToSupabase:', error);
+    }
+  }
+
+  /**
+   * Bootstrap the database with default data if it's empty
+   */
+  private async bootstrapDefaultData(): Promise<void> {
+    // Save to localStorage
+    this.saveProjectsToLocalStorage(REAL_PROJECTS);
+    
+    // If Supabase is available, also save there
     if (this.isSupabaseAvailable) {
       try {
-        const { error } = await supabase
+        // First check if there's already data in Supabase
+        const { data, error: checkError } = await supabase
           .from(PROJECTS_TABLE)
-          .insert(REAL_PROJECTS);
+          .select('id')
+          .limit(1);
           
-        if (error) {
-          console.warn('Error populating Supabase with default projects:', error.message);
+        if (checkError) {
+          console.warn('Error checking if Supabase has data:', checkError.message);
+        } else if (!data || data.length === 0) {
+          // Only populate if there's no data
+          console.log('Populating Supabase with default projects');
+          const { error } = await supabase
+            .from(PROJECTS_TABLE)
+            .insert(REAL_PROJECTS);
+            
+          if (error) {
+            console.warn('Error populating Supabase with default projects:', error.message);
+          } else {
+            console.log('Successfully populated Supabase with default projects');
+          }
         } else {
-          console.log('Successfully populated Supabase with default projects');
+          console.log('Supabase already has data, not populating with defaults');
         }
       } catch (error) {
-        console.warn('Error populating Supabase:', error);
+        console.warn('Error in bootstrapDefaultData:', error);
       }
     }
-    
-    // Save to localStorage as well
-    this.saveProjectsToLocalStorage(REAL_PROJECTS);
-    return REAL_PROJECTS;
   }
 
   /**
