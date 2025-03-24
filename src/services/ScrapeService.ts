@@ -48,6 +48,42 @@ let USER_SUBMITTED_PROJECTS: Agent[] = loadUserSubmittedProjects();
 // Store all search results in memory to make them available for all users
 let CACHED_SEARCH_RESULTS: Map<string, Agent[]> = new Map();
 
+// Load cached search results from localStorage
+const loadCachedSearchResults = (): Map<string, Agent[]> => {
+  try {
+    const savedCache = localStorage.getItem('cachedSearchResults');
+    if (savedCache) {
+      const parsed = JSON.parse(savedCache);
+      const map = new Map<string, Agent[]>();
+      Object.keys(parsed).forEach(key => {
+        map.set(key, parsed[key]);
+      });
+      console.log(`Loaded ${map.size} cached search queries from localStorage`);
+      return map;
+    }
+  } catch (error) {
+    console.error('Error loading cached search results:', error);
+  }
+  return new Map<string, Agent[]>();
+};
+
+// Save cached search results to localStorage
+const saveCachedSearchResults = (cache: Map<string, Agent[]>) => {
+  try {
+    const obj: Record<string, Agent[]> = {};
+    cache.forEach((value, key) => {
+      obj[key] = value;
+    });
+    localStorage.setItem('cachedSearchResults', JSON.stringify(obj));
+    console.log(`Saved ${cache.size} cached search queries to localStorage`);
+  } catch (error) {
+    console.error('Error saving cached search results:', error);
+  }
+};
+
+// Initialize cache from localStorage
+CACHED_SEARCH_RESULTS = loadCachedSearchResults();
+
 /**
  * Service for scraping GitHub repositories for AI Agent and MCP projects
  */
@@ -218,8 +254,9 @@ const ScrapeService = {
       
       console.log(`Found ${uniqueRepositories.length} unique repositories after filtering duplicates`);
       
-      // Store in cache for future use
+      // Cache results
       CACHED_SEARCH_RESULTS.set(cacheKey, uniqueRepositories);
+      saveCachedSearchResults(CACHED_SEARCH_RESULTS);
       
       // Save to localStorage
       if (uniqueRepositories.length > 0) {

@@ -186,8 +186,9 @@ export class SupabaseService {
   public async getAllProjects(): Promise<Agent[]> {
     console.log('SupabaseService: Getting all projects from database');
     
+    // Initialize projects array
     let projects: Agent[] = [];
-    let shouldUseFallback = false;
+    let loadedFromSupabase = false;
     
     // Try Supabase first if available
     if (this.isSupabaseAvailable) {
@@ -198,29 +199,40 @@ export class SupabaseService {
           
         if (error) {
           console.warn('Error fetching projects from Supabase:', error.message);
-          shouldUseFallback = true;
         } else if (data && data.length > 0) {
           console.log(`Retrieved ${data.length} projects from Supabase`);
           
-          // Cache in localStorage for offline use
-          localStorage.setItem('directory_projects', JSON.stringify(data));
+          // Remove duplicates by URL
+          const uniqueProjects: Agent[] = [];
+          const seenUrls = new Set<string>();
           
-          // Return the Supabase data directly
-          return data;
+          data.forEach(project => {
+            if (project.url && !seenUrls.has(project.url.toLowerCase())) {
+              seenUrls.add(project.url.toLowerCase());
+              uniqueProjects.push(project);
+            }
+          });
+          
+          if (uniqueProjects.length < data.length) {
+            console.log(`Removed ${data.length - uniqueProjects.length} duplicate projects`);
+          }
+          
+          // Cache in localStorage for offline use
+          localStorage.setItem('directory_projects', JSON.stringify(uniqueProjects));
+          localStorage.setItem('last_supabase_fetch', Date.now().toString());
+          
+          projects = uniqueProjects;
+          loadedFromSupabase = true;
         } else {
           console.log('No projects found in Supabase, checking localStorage');
-          shouldUseFallback = true;
         }
       } catch (error) {
         console.warn('Error in Supabase getAllProjects:', error);
-        shouldUseFallback = true;
       }
-    } else {
-      shouldUseFallback = true;
     }
     
-    // Fallback to localStorage if needed
-    if (shouldUseFallback) {
+    // Check localStorage if not loaded from Supabase
+    if (!loadedFromSupabase) {
       try {
         const localData = localStorage.getItem('directory_projects');
         if (localData) {
@@ -234,16 +246,16 @@ export class SupabaseService {
               console.log('Syncing localStorage data back to Supabase');
               this.syncLocalStorageToSupabase(projects);
             }
-            
-            return projects;
           }
         }
       } catch (e) {
         console.error('Error reading from localStorage:', e);
       }
-      
-      // Final fallback to hardcoded projects
-      console.log('No projects in localStorage, using hardcoded REAL_PROJECTS');
+    }
+    
+    // If still no projects, use default data
+    if (projects.length === 0) {
+      console.log('No projects found, using hardcoded REAL_PROJECTS');
       projects = REAL_PROJECTS;
       
       // Save to Supabase and localStorage
@@ -345,10 +357,15 @@ export class SupabaseService {
     console.log('Adding project to Supabase:', project.url);
     
     try {
+      // Normalize the URL for consistent comparison
+      if (project.url) {
+        project.url = project.url.toLowerCase().trim();
+      }
+      
       // First check if this URL already exists in our database
       const existingProjects = await this.getAllProjects();
       const isDuplicate = existingProjects.some(p => 
-        p.url && p.url.toLowerCase() === project.url.toLowerCase()
+        p.url && project.url && p.url.toLowerCase() === project.url.toLowerCase()
       );
       
       if (isDuplicate) {
@@ -391,6 +408,10 @@ export class SupabaseService {
             
             // Also update localStorage
             this.addProjectToLocalStorage(project);
+            
+            // Trigger a storage event to notify other components
+            localStorage.setItem('project_added_timestamp', Date.now().toString());
+            
             return true;
           }
         } catch (error) {
@@ -411,7 +432,7 @@ export class SupabaseService {
    */
   private addProjectToLocalStorage(project: Agent): boolean {
     try {
-      // Check if the project already exists
+      // Get existing projects
       const existingProjectsJson = localStorage.getItem('directory_projects');
       let existingProjects: Agent[] = [];
       
@@ -427,25 +448,32 @@ export class SupabaseService {
         }
       }
       
-      // Check if project already exists in localStorage
-      const existingProject = existingProjects.find(p => p.url === project.url);
-      
-      if (existingProject) {
-        console.log('Project already exists in localStorage');
-        return false;
+      // Check for duplicate
+      if (project.url) {
+        const normalizedUrl = project.url.toLowerCase().trim();
+        const isDuplicate = existingProjects.some(p => 
+          p.url && p.url.toLowerCase().trim() === normalizedUrl
+        );
+        
+        if (isDuplicate) {
+          console.log(`Project with URL ${project.url} already exists in localStorage`);
+          return false;
+        }
       }
       
-      // Add project to localStorage
-      const newProjects = [...existingProjects, project];
-      localStorage.setItem('directory_projects', JSON.stringify(newProjects));
-      console.log('Added project to localStorage');
+      // Add to existing projects
+      existingProjects.push(project);
+      
+      // Save back to localStorage
+      localStorage.setItem('directory_projects', JSON.stringify(existingProjects));
       
       // Trigger storage event for other components to detect
       localStorage.setItem('directory_updated', Date.now().toString());
       
+      console.log(`Added project ${project.name} to localStorage`);
       return true;
-    } catch (error) {
-      console.log('Error in project addition process');
+    } catch (e) {
+      console.error('Error adding project to localStorage:', e);
       return false;
     }
   }
