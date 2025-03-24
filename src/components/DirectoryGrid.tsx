@@ -2,587 +2,557 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import AgentCard from './AgentCard';
 import { Agent, FilterOptions, SortOption } from '../types';
 import Filters from './Filters';
+import { SupabaseService } from '../services/SupabaseService';
 import { GitHubService, REAL_PROJECTS } from '../services/GitHubService';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from './ui/select';
-import PaginationControl from './PaginationControl';
-import { paginateData } from '../utils/pagination';
-import { toast } from '@/components/ui/use-toast';
-import AddProjectForm from './AddProjectForm';
+  ArrowUp, 
+  ArrowDown,
+  RefreshCw,
+  SlidersHorizontal,
+  X,
+  Plus,
+  Github
+} from 'lucide-react';
+import { useTheme } from 'next-themes';
 import BulkImportModal from './BulkImportModal';
-import { Search, PlusCircle, RefreshCw, Sparkles, Database, Plus } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from './ui/alert';
+import { toast } from './ui/use-toast';
 import { AlertCircle } from 'lucide-react';
 import { Input } from './ui/input';
-import { Github } from 'lucide-react';
+import AddRepositoryDialog from './AddRepositoryDialog';
 
 interface DirectoryGridProps {
   initialSearchQuery?: string;
 }
 
-const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
+const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }) => {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [filteredAgents, setFilteredAgents] = useState<Agent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [languages, setLanguages] = useState<string[]>([]);
-  const [licenses, setLicenses] = useState<string[]>([]);
-  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-    language: null,
-    license: null,
-    sort: 'stars',
-    searchQuery: initialSearchQuery,
-  });
   const [error, setError] = useState<string | null>(null);
-  const directoryRef = useRef<HTMLDivElement>(null);
   
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const pageSize = 50;
+  // Filter states
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
+    searchQuery: initialSearchQuery,
+    language: '',
+    license: '',
+    sort: 'stars',
+  });
   
-  const totalPages = useMemo(() => {
-    if (filteredAgents.length === 0) return 1;
-    return Math.ceil(filteredAgents.length / pageSize);
-  }, [filteredAgents, pageSize]);
+  // Modal states
+  const [showFilters, setShowFilters] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
-  const currentPageData = useMemo(() => {
-    return paginateData(filteredAgents, page, pageSize);
-  }, [filteredAgents, page, pageSize]);
-
   // GitHub token state
+  const [showTokenInput, setShowTokenInput] = useState(false);
   const [githubToken, setGithubToken] = useState<string>('');
-  const [showTokenInput, setShowTokenInput] = useState<boolean>(false);
-
+  
+  // Load the GitHub token from localStorage if present
   useEffect(() => {
-    // Check if token exists in localStorage on component mount
     const savedToken = localStorage.getItem('github_token') || '';
+    console.log(`DirectoryGrid: Found saved token: ${savedToken ? '✓' : '✗'}`);
     setGithubToken(savedToken);
   }, []);
-
+  
   const handleSaveToken = () => {
     if (githubToken.trim()) {
       localStorage.setItem('github_token', githubToken.trim());
+      console.log('DirectoryGrid: GitHub token saved to localStorage');
+      setShowTokenInput(false);
       toast({
         title: "GitHub Token Saved",
-        description: "Your GitHub token has been saved. The application will now use it for API requests.",
-      });
-      setShowTokenInput(false);
-      // Refresh data with the new token
-      handleRefresh();
-    } else {
-      toast({
-        title: "Error",
-        description: "Please enter a valid GitHub token.",
-        variant: "destructive",
+        description: "Your GitHub token has been saved successfully.",
       });
     }
   };
 
-  useEffect(() => {
-    const loadAgents = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        setAgents(Array(pageSize).fill(null).map((_, i: number) => ({
-          id: `loading-${i}`,
-          name: 'Loading...',
-          description: 'Loading agent information...',
-          stars: 0,
-          forks: 0,
-          url: '',
-          owner: '',
-          avatar: '',
-          language: '',
-          updated: '',
-          topics: [],
-          license: '',
-          isLoading: true
-        })));
-
-        console.log('Fetching agent data...');
-        let fetchedAgents: Agent[] = [];
-        
-        try {
-          console.log('DirectoryGrid: Fetching agents from GitHubService');
-          
-          // First try to use fallback data to ensure something displays
-          fetchedAgents = REAL_PROJECTS;
-          
-          // Then try to get API data if a token is available
-          if (localStorage.getItem('github_token')) {
-            const agentData = await GitHubService.getAgentData(githubToken);
-            if (agentData && agentData.agents && agentData.agents.length > 0) {
-              fetchedAgents = agentData.agents;
-              console.log(`DirectoryGrid: Fetched ${fetchedAgents.length} agents from service`);
-            }
-          } else {
-            console.log('No GitHub token available. Using preloaded data.');
-          }
-        } catch (fetchError: any) {
-          console.error('Error fetching agents:', fetchError);
-          setError('Failed to load agent data. Using fallback data.');
-          
-          // Ensure we have fallback data
-          if (!fetchedAgents || fetchedAgents.length === 0) {
-            console.log('DirectoryGrid: Using fallback data');
-            fetchedAgents = REAL_PROJECTS;
-          }
-        }
-        
-        // Ensure we have valid data
-        if (!Array.isArray(fetchedAgents)) {
-          console.error('Invalid agent data received:', fetchedAgents);
-          fetchedAgents = [];
-        }
-        
-        // Extract unique languages and licenses for filtering
-        const uniqueLanguages = Array.from(new Set(
-          fetchedAgents
-            .map(agent => agent.language)
-            .filter(Boolean)
-        )).sort();
-        
-        const uniqueLicenses = Array.from(new Set(
-          fetchedAgents
-            .map(agent => agent.license)
-            .filter(Boolean)
-        )).sort();
-        
-        console.log(`Loaded ${fetchedAgents.length} agents with ${uniqueLanguages.length} languages and ${uniqueLicenses.length} licenses`);
-        setLanguages(uniqueLanguages);
-        setLicenses(uniqueLicenses);
-        setAgents(fetchedAgents);
-        setFilteredAgents(fetchedAgents);
-        
-        // Apply initial search query if provided
-        if (initialSearchQuery) {
-          handleSearch(initialSearchQuery);
-        }
-      } catch (err: any) {
-        console.error('Error in loadAgents:', err);
-        setError('Failed to load agent data. Please try again later.');
-        
-        // Set empty arrays to prevent further errors
-        setAgents([]);
-        setFilteredAgents([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadAgents();
-  }, [initialSearchQuery, githubToken]);
-
-  // Apply filtering and sorting when agents or filter options change
-  useEffect(() => {
-    console.log("Filtering with options:", filterOptions);
-    
-    if (!agents || agents.length === 0) {
-      console.log("No agents to filter");
-      setFilteredAgents([]);
-      return;
-    }
+  const fetchAgents = async () => {
+    console.log('DirectoryGrid: Starting to fetch agents');
+    setIsLoading(true);
+    setError(null);
     
     try {
-      // Only filter if we have agents to filter
-      if (!agents || agents.length === 0) {
-        setFilteredAgents([]);
-        return;
-      }
+      // Explicitly fetch from Supabase to ensure we get ALL projects
+      console.log('DirectoryGrid: Initial load - fetching all agents from Supabase');
+      const supabaseService = SupabaseService.getInstance();
+      console.log('SupabaseService instance:', supabaseService);
+      const data = await supabaseService.getAllProjects();
+      console.log('DirectoryGrid: Received data from Supabase:', data);
       
-      console.log(`DirectoryGrid: Filtering ${agents.length} agents with search "${filterOptions.searchQuery}" and language "${filterOptions.language}"`);
-      
-      // Step 1: Apply search filter if searchQuery exists
-      let filtered = agents;
-      
-      if (filterOptions.searchQuery && filterOptions.searchQuery.trim() !== '') {
-        const normalizedQuery = filterOptions.searchQuery.toLowerCase().trim();
-        const searchTerms = normalizedQuery.split(/\s+/);
-        
-        console.log(`DirectoryGrid: Search terms: ${JSON.stringify(searchTerms)}`);
-        
-        filtered = filtered.filter(agent => {
-          // Ensure agent and its properties exist
-          if (!agent || agent.isLoading) return false;
-          
-          const name = agent.name?.toLowerCase() || '';
-          const desc = agent.description?.toLowerCase() || '';
-          const lang = agent.language?.toLowerCase() || '';
-          const license = agent.license?.toLowerCase() || '';
-          
-          // Check if any search term matches any of the agent properties
-          return searchTerms.some(term => 
-            name.includes(term) || 
-            desc.includes(term) || 
-            lang.includes(term) ||
-            license.includes(term)
-          );
+      if (!data || data.length === 0) {
+        console.log('DirectoryGrid: No agents found, using fallback data');
+        console.log('Setting fallback REAL_PROJECTS:', REAL_PROJECTS);
+        setAgents(REAL_PROJECTS);
+        setFilteredAgents(REAL_PROJECTS);
+        toast({
+          title: "Using Sample Data",
+          description: "No projects found in database, showing sample data instead.",
         });
-        
-        console.log(`DirectoryGrid: After search filtering, ${filtered.length} agents remain`);
-      }
-      
-      // Step 2: Apply language filter if selectedLanguage exists
-      if (filterOptions.language) {
-        const normalizedLanguage = filterOptions.language.toLowerCase();
-        
-        filtered = filtered.filter(agent => {
-          const language = agent.language?.toLowerCase() || '';
-          return language === normalizedLanguage;
+      } else {
+        console.log(`DirectoryGrid: Loaded ${data.length} agents`);
+        setAgents(data);
+        setFilteredAgents(data);
+        toast({
+          title: "Data Loaded",
+          description: `Successfully loaded ${data.length} projects from database.`,
         });
-        
-        console.log(`DirectoryGrid: After language filtering, ${filtered.length} agents remain`);
       }
-      
-      // Step 3: Apply license filter if selectedLicense exists
-      if (filterOptions.license) {
-        const normalizedLicense = filterOptions.license.toLowerCase();
-        
-        filtered = filtered.filter(agent => {
-          const license = agent.license?.toLowerCase() || '';
-          return license === normalizedLicense;
-        });
-        
-        console.log(`DirectoryGrid: After license filtering, ${filtered.length} agents remain`);
-      }
-      
-      // Step 4: Sort the filtered agents
-      const sorted = sortAgents(filtered, filterOptions.sort);
-      
-      console.log(`DirectoryGrid: After sorting, ${sorted.length} agents available`);
-      
-      // Update state with filtered and sorted agents
-      setFilteredAgents(sorted);
-    } catch (err: any) {
-      console.error('Error filtering agents:', err);
-      setError('Error filtering agent data. Showing all available agents.');
-      
-      // Fall back to showing all agents if filtering fails
-      const sorted = sortAgents(agents, filterOptions.sort);
-      setFilteredAgents(sorted);
-    }
-  }, [agents, filterOptions]);
-
-  const sortAgents = (agents: Agent[], sort: SortOption): Agent[] => {
-    switch (sort) {
-      case 'stars':
-        return [...agents].sort((a, b) => b.stars - a.stars);
-      case 'forks':
-        return [...agents].sort((a, b) => b.forks - a.forks);
-      case 'updated':
-        return [...agents].sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
-      default:
-        return agents;
+    } catch (err) {
+      console.error('DirectoryGrid: Error fetching agents:', err);
+      console.log('Setting fallback REAL_PROJECTS due to error');
+      setError('Failed to load directory data. Please try again later.');
+      setAgents(REAL_PROJECTS);
+      setFilteredAgents(REAL_PROJECTS);
+      toast({
+        title: "Error Loading Data",
+        description: "Failed to fetch data from database, showing sample data instead.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
-
-  // Function to apply filters to a list of agents
-  const applyFilters = (agents: Agent[], filters: FilterOptions): Agent[] => {
+  
+  useEffect(() => {
+    // Initial data fetch
+    console.log('DirectoryGrid: Initial component mount, fetching data');
+    fetchAgents();
+    
+    // Set up localStorage listener to detect changes from other components
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'directory_updated' || e.key === 'directory_projects') {
+        console.log('DirectoryGrid: Storage change detected, refreshing data');
+        fetchAgents();
+      }
+    };
+    
+    // Listen for storage events
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+  
+  // Apply filters when they change
+  useEffect(() => {
+    console.log('DirectoryGrid: Filter options changed, applying filters');
+    applyFilters();
+  }, [filterOptions, agents]);
+  
+  const applyFilters = () => {
+    console.log('DirectoryGrid: Applying filters:', filterOptions);
     let filtered = [...agents];
     
-    // Apply language filter
-    if (filters.language) {
-      const normalizedLanguage = filters.language.toLowerCase();
+    if (filterOptions.searchQuery) {
+      // Apply search filtering
+      const normalizedQuery = filterOptions.searchQuery.toLowerCase().trim();
+      const searchTerms = normalizedQuery.split(/\s+/);
+      
+      filtered = filtered.filter(agent => {
+        // Ensure agent and its properties exist
+        if (!agent || agent.isLoading) return false;
+        
+        const name = agent.name?.toLowerCase() || '';
+        const desc = agent.description?.toLowerCase() || '';
+        const lang = agent.language?.toLowerCase() || '';
+        const license = agent.license?.toLowerCase() || '';
+        
+        // Check if any search term matches any of the agent properties
+        return searchTerms.some(term => 
+          name.includes(term) || 
+          desc.includes(term) || 
+          lang.includes(term) ||
+          license.includes(term)
+        );
+      });
+    }
+    
+    if (filterOptions.language) {
+      const normalizedLanguage = filterOptions.language.toLowerCase();
+      
       filtered = filtered.filter(agent => {
         const language = agent.language?.toLowerCase() || '';
         return language === normalizedLanguage;
       });
     }
     
-    // Apply license filter
-    if (filters.license) {
-      const normalizedLicense = filters.license.toLowerCase();
+    if (filterOptions.license) {
+      const normalizedLicense = filterOptions.license.toLowerCase();
+      
       filtered = filtered.filter(agent => {
         const license = agent.license?.toLowerCase() || '';
         return license === normalizedLicense;
       });
     }
     
-    // Apply sorting
-    return sortAgents(filtered, filters.sort);
-  };
-
-  const handleSearch = (query: string) => {
-    console.log("Search query changed:", query);
-    setPage(1);
-    setHasMore(true);
-    setFilterOptions({ ...filterOptions, searchQuery: query, license: null });
-  };
-
-  const handleLanguageChange = (language: string | null) => {
-    setPage(1);
-    setHasMore(true);
-    setFilterOptions({ ...filterOptions, language });
-  };
-
-  const handleLicenseChange = (license: string | null) => {
-    setPage(1);
-    setHasMore(true);
-    setFilterOptions({ ...filterOptions, license });
-  };
-
-  const handleSortChange = (sort: SortOption) => {
-    setFilterOptions({ ...filterOptions, sort });
+    // Sort the filtered agents
+    const sorted = sortAgents(filtered, filterOptions.sort);
+    
+    console.log(`DirectoryGrid: Filtered agents count: ${sorted.length}`);
+    setFilteredAgents(sorted);
   };
   
-  const handlePageChange = (newPage: number) => {
-    setPage(newPage);
+  // Generic sort function for agents
+  const sortAgents = (agents: Agent[], sortOption: SortOption): Agent[] => {
+    return [...agents].sort((a, b) => {
+      switch (sortOption) {
+        case 'stars':
+          return (b.stars || 0) - (a.stars || 0);
+        case 'forks':
+          return (b.forks || 0) - (a.forks || 0);
+        case 'updated':
+          return new Date(b.updated || 0).getTime() - new Date(a.updated || 0).getTime();
+        default:
+          return (b.stars || 0) - (a.stars || 0);
+      }
+    });
+  };
+  
+  // Get unique languages from all agents for filtering
+  const languages = useMemo(() => {
+    const languageSet = new Set<string>();
     
-    if (directoryRef.current) {
-      directoryRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    agents.forEach(agent => {
+      if (agent.language) {
+        languageSet.add(agent.language);
+      }
+    });
+    
+    return Array.from(languageSet).sort();
+  }, [agents]);
+  
+  // Get unique licenses from all agents for filtering
+  const licenses = useMemo(() => {
+    const licenseSet = new Set<string>();
+    
+    agents.forEach(agent => {
+      if (agent.license) {
+        licenseSet.add(agent.license);
+      }
+    });
+    
+    return Array.from(licenseSet).sort();
+  }, [agents]);
+  
+  const handleFilterChange = (newFilters: Partial<FilterOptions>) => {
+    setFilterOptions(prev => ({ ...prev, ...newFilters }));
   };
   
   const handleRefresh = async () => {
     setIsRefreshing(true);
+    
     try {
-      // Clear cache to force a fresh load
-      if (typeof window !== 'undefined' && window.__AGENT_CACHE__) {
-        window.__AGENT_CACHE__.agents = null;
-      }
+      console.log("Refreshing directory with latest data...");
       
-      // Get fresh data
-      const refreshedData = await GitHubService.getAgentData(githubToken);
-      setAgents(refreshedData.agents);
+      // Get the latest projects from Supabase/localStorage via the service
+      const supabaseService = SupabaseService.getInstance();
+      const latestProjects = await supabaseService.getAllProjects();
       
-      // Apply filters to the new data
-      let filtered = [...refreshedData.agents];
-      if (filterOptions.searchQuery) {
-        // Apply search filtering
-        const normalizedQuery = filterOptions.searchQuery.toLowerCase().trim();
-        const searchTerms = normalizedQuery.split(/\s+/);
-        
-        filtered = filtered.filter(agent => {
-          // Ensure agent and its properties exist
-          if (!agent || agent.isLoading) return false;
-          
-          const name = agent.name?.toLowerCase() || '';
-          const desc = agent.description?.toLowerCase() || '';
-          const lang = agent.language?.toLowerCase() || '';
-          const license = agent.license?.toLowerCase() || '';
-          
-          // Check if any search term matches any of the agent properties
-          return searchTerms.some(term => 
-            name.includes(term) || 
-            desc.includes(term) || 
-            lang.includes(term) ||
-            license.includes(term)
-          );
-        });
-      }
+      console.log(`Refresh complete: Loaded ${latestProjects.length} projects`);
       
-      if (filterOptions.language) {
-        const normalizedLanguage = filterOptions.language.toLowerCase();
-        
-        filtered = filtered.filter(agent => {
-          const language = agent.language?.toLowerCase() || '';
-          return language === normalizedLanguage;
-        });
-      }
+      // Update both the full set and filtered set of agents
+      setAgents(latestProjects);
+      setFilteredAgents(latestProjects);
       
-      if (filterOptions.license) {
-        const normalizedLicense = filterOptions.license.toLowerCase();
-        
-        filtered = filtered.filter(agent => {
-          const license = agent.license?.toLowerCase() || '';
-          return license === normalizedLicense;
-        });
-      }
-      
-      // Sort the filtered agents
-      const sorted = sortAgents(filtered, filterOptions.sort);
-      
-      setFilteredAgents(sorted);
-      
+      // Show success toast
       toast({
         title: "Refresh Complete",
-        description: `Successfully refreshed ${refreshedData.agents.length} projects.`,
-        variant: "default",
+        description: `Loaded ${latestProjects.length} projects from database`,
       });
-    } catch (error: any) {
-      console.error('Error refreshing data:', error);
+    } catch (error) {
+      console.error("Error refreshing directory:", error);
+      
+      // Show error toast
       toast({
         title: "Refresh Failed",
-        description: "Unable to refresh data. Please try again later.",
-        variant: "destructive",
+        description: "There was an error refreshing the directory",
+        variant: "destructive"
       });
     } finally {
       setIsRefreshing(false);
     }
   };
-
-  const handleBulkImport = async (projects: any) => {
-    console.log("CRITICAL: Received bulk import with:", Array.isArray(projects) ? projects.length : "Not an array");
+  
+  const handleBulkImportComplete = (newAgents: Agent[]) => {
+    console.log(`DirectoryGrid: Bulk import complete, received ${newAgents.length} agents`);
+    setShowBulkImport(false);
     
-    // Force-clear any possible cache
-    if (typeof window !== 'undefined') {
-      if (window.__AGENT_CACHE__) {
-        window.__AGENT_CACHE__ = null;
-      }
-      localStorage.removeItem('directory_projects');
-    }
+    // Refresh the agent list after bulk import
+    fetchAgents();
     
-    // If we received projects directly, use them immediately
-    if (Array.isArray(projects) && projects.length > 0) {
-      console.log("CRITICAL: Using directly provided projects:", projects.length);
-      setAgents(projects);
-      setFilteredAgents(projects);
-      return;
-    }
-    
-    // Otherwise, force a complete reload of the page to guarantee fresh data
-    console.log("CRITICAL: Projects not provided directly, forcing page reload");
-    window.location.reload();
+    toast({
+      title: "Import Complete",
+      description: `Successfully imported ${newAgents.length} projects.`,
+    });
   };
-
-  // Function to show/hide the bulk import modal
-  const [showBulkImport, setShowBulkImport] = useState(false);
-
-  // Get list of existing project URLs to prevent duplicates
-  const existingProjectUrls = useMemo(() => {
-    return agents.map(agent => agent.url);
-  }, [agents]);
-
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmitProject = async (url: string) => {
-    if (isSubmitting) return;
-    
+  
+  const handleAddRepository = async (url: string) => {
     setIsSubmitting(true);
+    setError(null);
     
     try {
+      // First check if this repository is already in our directory
+      const isDuplicate = agents.some(agent => 
+        agent.url && agent.url.toLowerCase() === url.toLowerCase().trim()
+      );
+      
+      if (isDuplicate) {
+        toast({
+          title: 'Duplicate Repository',
+          description: 'This repository already exists in the directory.',
+          variant: 'destructive',
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // If not a duplicate, proceed with adding
       const result = await GitHubService.addProject(url);
       
       if (result.success && result.agent) {
-        setAgents(prevAgents => [result.agent, ...prevAgents]);
+        // Then save to our database
+        const supabaseService = SupabaseService.getInstance();
+        const added = await supabaseService.addProject(result.agent);
         
-        toast({
-          title: "Project Added",
-          description: `Successfully added ${result.agent.name} to the directory.`,
-        });
+        if (!added) {
+          toast({
+            title: 'Duplicate Repository',
+            description: 'This repository already exists in the directory.',
+            variant: 'destructive',
+          });
+          setIsSubmitting(false);
+          return;
+        }
+        
+        // Update state
+        setAgents(prevAgents => [result.agent, ...prevAgents]);
+        setFilteredAgents(prevAgents => [result.agent, ...prevAgents]);
         
         setShowAddForm(false);
+        toast({
+          title: 'Project Added',
+          description: `Successfully added ${result.agent.name} to the directory.`,
+        });
       } else {
         toast({
-          title: "Error",
-          description: result.error || "Failed to add project.",
-          variant: "destructive",
+          title: 'Error',
+          description: result.error || 'Failed to add repository.',
+          variant: 'destructive',
         });
       }
-    } catch (error: any) {
-      console.error('Error adding project:', error);
+    } catch (error) {
+      console.error('Error adding repository:', error);
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "An unknown error occurred.",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to add repository. Please try again.',
+        variant: 'destructive',
       });
     } finally {
       setIsSubmitting(false);
     }
   };
-
+  
   return (
-    <div id="directory" ref={directoryRef} className="py-6 px-4 bg-gradient-to-b from-[#0e1129] to-[#1e2344]">
-      <div className="max-w-5xl mx-auto">
-        {/* Directory header with title and buttons */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 border-b border-white/10 pb-2 gap-2">
-          <div className="flex items-center gap-1.5">
-            <Database className="h-3.5 w-3.5 text-indigo-400" />
-            <h3 className="text-sm font-bold text-white">AI Agent Directory</h3>
-            <span className="text-xs text-white/60 ml-1.5">
-              {filteredAgents.length > 0 ? (
-                <>Showing <span className="font-semibold text-indigo-400">{filteredAgents.length}</span> of <span className="font-semibold text-indigo-400">{agents.length}</span> total projects</>
-              ) : isLoading ? (
-                <span className="text-indigo-400">Loading...</span>
-              ) : (
-                <span className="text-red-400">No projects found</span>
-              )}
-            </span>
+    <div id="directory" className="w-full relative">
+      <div className="bg-gradient-to-r from-[#0c0e20] to-[#161a36] backdrop-blur-md border-b border-white/10 p-4 flex flex-col md:flex-row md:items-center gap-y-4 justify-between">
+        <div className="flex items-center">
+          <div className="flex items-center bg-white/5 rounded-lg p-1.5 backdrop-blur-sm border border-white/10 mr-4">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400">
+              <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9z"></path>
+              <path d="M3 9V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4"></path>
+            </svg>
           </div>
           
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="w-full md:w-auto flex gap-2">
-              <Select 
-                value={filterOptions.sort} 
-                onValueChange={(value: SortOption) => handleSortChange(value)}
-              >
-                <SelectTrigger className="h-7 text-xs bg-[#0e1129] border-white/10 text-white w-[120px] md:w-[140px]">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent className="bg-[#1a1f36] border-white/10 text-white">
-                  <SelectItem value="stars" className="text-xs">Most Stars</SelectItem>
-                  <SelectItem value="forks" className="text-xs">Most Forks</SelectItem>
-                  <SelectItem value="updated" className="text-xs">Recently Updated</SelectItem>
-                  <SelectItem value="name" className="text-xs">Name (A-Z)</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-7 px-2 text-xs bg-[#0e1129] border-white/10 hover:bg-[#161b33] hover:text-white hover:border-white/20 text-white"
-                onClick={handleRefresh}
-                disabled={isRefreshing}
-              >
-                {isRefreshing ? (
-                  <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-3 w-3 mr-1" />
-                )}
-                Refresh
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-7 px-2 text-xs bg-[#0e1129] border-white/10 hover:bg-[#161b33] hover:text-white hover:border-white/20 text-white"
+          <div>
+            <h2 className="font-semibold text-white text-lg">AI Agent Directory</h2>
+            <div className="text-xs text-white/60 font-medium">
+              Showing <span className="text-indigo-400 font-semibold">{filteredAgents.length}</span> of <span className="text-indigo-400 font-semibold">{agents.length}</span> total projects
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 md:gap-3 justify-end">
+          <div className="bg-gray-900 rounded-md border border-white/10 flex items-center shadow-sm hover:shadow-md transition-all duration-200 h-8">
+            <select
+              value={filterOptions.sort}
+              onChange={(e) => handleFilterChange({ sort: e.target.value as SortOption })}
+              className="h-8 rounded-md bg-transparent text-white border-none text-sm focus:ring-1 focus:ring-indigo-400 focus:outline-none px-3 py-0 cursor-pointer"
+            >
+              <option value="stars">Most Stars</option>
+              <option value="forks">Most Forks</option>
+              <option value="updated">Recently Updated</option>
+            </select>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {/* Primary action group */}
+            <div className="flex items-center space-x-3">
+              <Button
+                variant="gradient"
+                size="sm"
                 onClick={() => setShowAddForm(true)}
+                disabled={isLoading || isRefreshing}
+                className="transition-all duration-200 shadow-sm hover:shadow-md px-3 relative bg-gradient-to-r from-indigo-600 to-violet-600"
               >
-                <Plus className="h-3 w-3 mr-1" />
-                Add Project
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
+                <span className="font-medium">Add Project</span>
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-7 px-2 text-xs bg-[#0e1129] border-white/10 hover:bg-[#161b33] hover:text-white hover:border-white/20 text-white"
+              
+              <Button
+                variant="dark"
+                size="sm"
                 onClick={() => setShowBulkImport(true)}
+                disabled={isLoading || isRefreshing}
+                className="relative px-3 transition-all duration-200 shadow-sm hover:shadow-md"
               >
-                <PlusCircle className="h-3 w-3 mr-1" />
-                Bulk Import
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                <span className="sr-only">Bulk Import</span>
+                Bulk
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-7 px-2 text-xs bg-[#0e1129] border-white/10 hover:bg-[#161b33] hover:text-white hover:border-white/20 text-white"
-                onClick={() => setShowTokenInput(!showTokenInput)}
+            </div>
+            
+            {/* Secondary action group */}
+            <div className="flex items-center ml-2 space-x-2">
+              {/* Refresh button hidden for now but code preserved */}
+              {/* <Button
+                variant="dark"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={isLoading || isRefreshing}
+                className="relative px-3 transition-all duration-200"
               >
-                <Github className="h-3 w-3 mr-1" />
-                GitHub Token
+                <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span className="sr-only">Refresh</span>
+              </Button> */}
+              
+              <Button
+                variant="dark"
+                size="sm"
+                onClick={() => setShowFilters(!showFilters)}
+                disabled={isLoading || isRefreshing}
+                className={`relative px-3 transition-all duration-200 shadow-sm hover:shadow-md ${showFilters ? 'bg-indigo-500 border-indigo-400' : ''}`}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                <span className="sr-only">Filters</span>
+                {(filterOptions.language || filterOptions.license) && (
+                  <span className="absolute -top-1 -right-1 h-3 w-3 bg-indigo-500 rounded-full border border-white/20"></span>
+                )}
+              </Button>
+              
+              <Button
+                variant="dark"
+                size="sm"
+                onClick={() => setShowTokenInput(!showTokenInput)}
+                disabled={isLoading || isRefreshing}
+                className="relative px-3 transition-all duration-200 shadow-sm hover:shadow-md"
+              >
+                <Github className="h-4 w-4" />
+                <span className="sr-only">GitHub Token</span>
+                {!githubToken && (
+                  <span className="absolute -top-1 -right-1 h-3 w-3 bg-yellow-500 rounded-full border border-white/20"></span>
+                )}
               </Button>
             </div>
           </div>
         </div>
-        
-        {/* GitHub Token Configuration */}
-        {showTokenInput && (
-          <div className="mt-2 p-4 bg-[#1a1f36] rounded-lg border border-white/10 max-w-md">
-            <p className="text-sm text-gray-300 mb-2">
-              Add your GitHub Personal Access Token to enable API searches.
-              <a 
-                href="https://github.com/settings/tokens" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="ml-1 text-blue-400 hover:underline"
+      </div>
+
+      {showFilters && (
+        <div className="p-4 bg-[#161a36]/80 backdrop-blur-md border-b border-white/10 flex flex-wrap gap-4">
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-xs font-medium text-white/60 mb-1.5">Search</label>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search agents..."
+                value={filterOptions.searchQuery}
+                onChange={(e) => handleFilterChange({ searchQuery: e.target.value })}
+                className="w-full h-9 rounded-md border border-white/20 bg-white/5 px-9 py-1 text-sm text-white placeholder:text-white/40 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 focus:outline-none transition-all duration-200"
+              />
+              <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/40">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              </div>
+              {filterOptions.searchQuery && (
+                <button 
+                  onClick={() => handleFilterChange({ searchQuery: '' })}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+          
+          <div className="w-full md:w-auto flex flex-wrap md:flex-nowrap gap-4">
+            <div className="w-full md:w-40">
+              <label className="block text-xs font-medium text-white/60 mb-1.5">Language</label>
+              <select 
+                className="w-full h-9 rounded-md border border-white/20 bg-white/5 px-3 py-1 text-sm text-white focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 focus:outline-none transition-all duration-200"
+                value={filterOptions.language || ''}
+                onChange={(e) => handleFilterChange({ language: e.target.value || '' })}
               >
-                Generate token here
-              </a>
+                <option value="">All Languages</option>
+                {languages.map(lang => (
+                  <option key={lang} value={lang}>{lang}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="w-full md:w-40">
+              <label className="block text-xs font-medium text-white/60 mb-1.5">License</label>
+              <select 
+                className="w-full h-9 rounded-md border border-white/20 bg-white/5 px-3 py-1 text-sm text-white focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 focus:outline-none transition-all duration-200"
+                value={filterOptions.license || ''}
+                onChange={(e) => handleFilterChange({ license: e.target.value || '' })}
+              >
+                <option value="">All Licenses</option>
+                {licenses.map(license => (
+                  <option key={license} value={license}>{license}</option>
+                ))}
+              </select>
+            </div>
+            
+            {(filterOptions.language || filterOptions.license || filterOptions.searchQuery) && (
+              <div className="flex items-end">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handleFilterChange({ language: '', license: '', searchQuery: '' })}
+                  className="h-9 border-white/20 text-white/80 hover:text-white"
+                >
+                  <X className="h-3.5 w-3.5 mr-1.5" />
+                  Clear Filters
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showTokenInput && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-lg p-6 max-w-md w-full shadow-lg relative">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="absolute top-2 right-2" 
+              onClick={() => setShowTokenInput(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+            
+            <h2 className="text-lg font-bold mb-4">Enter GitHub Token</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Providing a GitHub token will allow you to search GitHub's API with higher rate limits.
+              Your token is stored only in your browser's localStorage.
             </p>
             <div className="flex gap-2">
               <Input
@@ -604,130 +574,70 @@ const DirectoryGrid = ({ initialSearchQuery = '' }: DirectoryGridProps) => {
               Token is stored in your browser's localStorage and is not sent to our servers.
             </p>
           </div>
-        )}
-        
-        {/* Filters row */}
-        <div className="flex items-center justify-between mb-4 gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-medium text-white/60 uppercase tracking-wider">Filters:</span>
-            <Select
-              value={filterOptions.language}
-              onValueChange={handleLanguageChange}
-              defaultValue="all"
-            >
-              <SelectTrigger className="w-auto border-white/20 bg-white/5 text-white text-xs h-7 px-2 rounded-sm">
-                <SelectValue placeholder="Languages" />
-              </SelectTrigger>
-              <SelectContent className="bg-[#1a1f36] border-white/10 text-white text-xs">
-                <SelectItem value="all" className="text-xs">All Languages</SelectItem>
-                {languages.map((lang) => (
-                  <SelectItem key={lang} value={lang} className="text-xs">
-                    {lang}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <Select
-              value={filterOptions.license}
-              onValueChange={handleLicenseChange}
-              defaultValue="all"
-            >
-              <SelectTrigger className="w-auto border-white/20 bg-white/5 text-white text-xs h-7 px-2 rounded-sm">
-                <SelectValue placeholder="License" />
-              </SelectTrigger>
-              <SelectContent className="bg-[#1a1f36] border-white/10 text-white text-xs">
-                <SelectItem value="all" className="text-xs">All Licenses</SelectItem>
-                {licenses.map((license) => (
-                  <SelectItem key={license} value={license} className="text-xs">
-                    {license}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <div className="relative w-64">
-              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-white/40" />
-              <input
-                type="text"
-                placeholder="Search agents..."
-                value={filterOptions.searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-                className="w-full pl-7 pr-2 py-1 bg-white/5 border border-white/20 rounded-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-white placeholder-white/40 text-xs h-7"
-              />
-            </div>
+        </div>
+      )}
+      
+      {showAddForm && (
+        <AddRepositoryDialog
+          onAdd={handleAddRepository}
+          onCancel={() => setShowAddForm(false)}
+          isSubmitting={isSubmitting}
+        />
+      )}
+      
+      <BulkImportModal
+        isOpen={showBulkImport}
+        onClose={() => setShowBulkImport(false)}
+        onProjectsAdded={(projects) => {
+          if (projects && projects.length > 0) {
+            // Add projects to state
+            setAgents(prevAgents => [...projects, ...prevAgents]);
+            setFilteredAgents(prevAgents => [...projects, ...prevAgents]);
+            // Show success message
+            toast({
+              title: 'Projects Added',
+              description: `Successfully added ${projects.length} projects to the directory.`,
+            });
+          }
+        }}
+        existingProjectUrls={agents.map(agent => agent.url || '')}
+      />
+      
+      {error && (
+        <div className="mb-6 p-4 border border-red-400 rounded-md bg-red-50 text-red-800 flex items-center">
+          <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
+          <p>{error}</p>
+        </div>
+      )}
+      
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center min-h-[300px]">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mb-4"></div>
+          <p className="text-lg">Loading directory...</p>
+        </div>
+      ) : filteredAgents.length === 0 ? (
+        <div className="flex flex-col items-center justify-center min-h-[300px] text-center">
+          <p className="text-lg mb-2">No projects found</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Try adjusting your filters or add some new projects
+          </p>
+          <div className="flex gap-2">
+            <Button onClick={() => setShowAddForm(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Add Project
+            </Button>
+            <Button variant="outline" onClick={() => setShowBulkImport(true)}>
+              Import from GitHub
+            </Button>
           </div>
         </div>
-        
-        <div className="flex items-center justify-between gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <Database className="h-4 w-4 text-indigo-400" />
-            <h2 className="font-semibold text-white">Agent Directory</h2>
-            <Badge variant="outline" className="rounded-sm text-white/70 text-[10px] h-5 border-white/10 ml-1 font-normal">
-              {agents.length} agents
-            </Badge>
-          </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredAgents.map((agent, index) => (
+            <AgentCard key={`${agent.url}-${index}`} agent={agent} />
+          ))}
         </div>
-        
-        {/* Add project form */}
-        {showAddForm && (
-          <div className="mb-8 p-6 bg-[#1a1f36] rounded-xl border border-white/10">
-            <AddProjectForm 
-              onProjectAdded={handleSubmitProject}
-              onClose={() => setShowAddForm(false)}
-              isOpen={true}
-            />
-          </div>
-        )}
-        
-        {/* Bulk import modal */}
-        {showBulkImport && (
-          <BulkImportModal
-            isOpen={showBulkImport}
-            onClose={() => setShowBulkImport(false)}
-            onProjectsAdded={handleBulkImport}
-            existingProjectUrls={existingProjectUrls}
-          />
-        )}
-        
-        {error && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        
-        {filteredAgents.length === 0 && !isLoading ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center bg-[#1a1f36] rounded-xl border border-white/10">
-            <div className="mb-4 text-white/30">
-              <Search className="w-12 h-12 mx-auto" />
-            </div>
-            <h3 className="text-xl font-medium text-white mb-2">No results found</h3>
-            <p className="text-white/60 max-w-md text-[10px]">
-              We couldn't find any AI agent projects matching your search criteria. Try adjusting your filters or search terms.
-            </p>
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {(isLoading && page === 1 ? agents : currentPageData).map((agent) => (
-                <AgentCard key={agent.id} agent={agent} />
-              ))}
-            </div>
-            
-            {filteredAgents.length > 0 && (
-              <div className="mt-12">
-                <PaginationControl 
-                  currentPage={page} 
-                  totalPages={totalPages} 
-                  onPageChange={handlePageChange} 
-                />
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      )}
     </div>
   );
 };

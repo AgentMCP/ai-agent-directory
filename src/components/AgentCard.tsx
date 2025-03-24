@@ -74,9 +74,14 @@ const AgentCard = ({ agent }: AgentCardProps) => {
             alt={`${agent.owner}'s avatar`} 
             className="w-6 h-6 rounded-full border border-white/20 mr-2"
           />
-          <h3 className="text-base font-semibold text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-indigo-400 group-hover:via-purple-400 group-hover:to-pink-400 transition-colors truncate">
+          <a 
+            href={agent.url} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-base font-semibold text-white group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-indigo-400 group-hover:via-purple-400 group-hover:to-pink-400 transition-colors truncate"
+          >
             {agent.name}
-          </h3>
+          </a>
         </div>
         
         {/* Description */}

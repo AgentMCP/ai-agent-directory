@@ -11,12 +11,13 @@ const PROJECTS_TABLE = 'projects';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 /**
- * SupabaseService - Handles storing and retrieving projects from Supabase
- * Falls back to REAL_PROJECTS when Supabase is unavailable
+ * Service for storing and retrieving project data
+ * Primary store: Supabase database
+ * Fallback: Browser localStorage
  */
 export class SupabaseService {
   private static instance: SupabaseService;
-  private isSupabaseAvailable: boolean = true;
+  private isSupabaseAvailable = true;
 
   // Singleton pattern to ensure consistency across the application
   public static getInstance(): SupabaseService {
@@ -26,199 +27,306 @@ export class SupabaseService {
     return SupabaseService.instance;
   }
 
-  private constructor() {
-    console.log('SupabaseService initialized');
+  constructor() {
+    // Check if Supabase is available by making a test query
     this.checkSupabaseAvailability();
   }
 
   /**
-   * Check if Supabase projects table exists
+   * Check if Supabase is available by querying the projects table
    */
-  private async checkSupabaseAvailability(): Promise<void> {
+  private async checkSupabaseAvailability() {
     try {
-      // Check if table exists by trying to get a single row
-      const { error } = await supabase
-        .from(PROJECTS_TABLE)
-        .select('id')
-        .limit(1);
+      const { error } = await supabase.from(PROJECTS_TABLE).select('id').limit(1);
       
       if (error) {
-        // Table doesn't exist - try to create it
-        if (error.code === '42P01') { // PostgreSQL code for "relation does not exist"
-          console.log('Projects table does not exist. Attempting to create it...');
-          try {
-            // Use RPC to create table if you have permission (usually won't work with anon key)
-            // Silently fail and use fallback data instead
-            this.isSupabaseAvailable = false;
-            
-            // Don't log the error to console to avoid noise
-            console.log('Using local data storage instead of Supabase.');
-            return;
-          } catch (createError) {
-            // Silent fail - no need to show errors in console
-            this.isSupabaseAvailable = false;
-            return;
-          }
-        }
-        
-        // Other Supabase error
+        console.warn('Supabase unavailable, will use localStorage:', error.message);
         this.isSupabaseAvailable = false;
-        console.log('Supabase unavailable, using local storage instead.');
       } else {
-        console.log('Supabase projects table exists and is available');
+        console.log('Supabase connection successful');
         this.isSupabaseAvailable = true;
       }
     } catch (error) {
-      console.log('Failed to check Supabase availability. Using local storage.');
+      console.warn('Error checking Supabase availability:', error);
       this.isSupabaseAvailable = false;
     }
   }
 
   /**
-   * Initialize and ensure project data is available
+   * Add multiple projects to the database
+   * First tries Supabase, falls back to localStorage if needed
    */
-  public async initializeTable(): Promise<void> {
-    // Force a fresh check of Supabase availability
-    await this.checkSupabaseAvailability();
-    
-    // If Supabase is available, make sure it has data
+  public async addProjects(projects: Agent[]): Promise<number> {
+    // Try Supabase first if available
     if (this.isSupabaseAvailable) {
       try {
-        // Check if table has data
-        const { data, error } = await supabase
+        // First get existing projects to avoid duplicates
+        const { data: existingProjects, error: fetchError } = await supabase
           .from(PROJECTS_TABLE)
-          .select('id')
-          .limit(1);
-        
-        if (!error && (!data || data.length === 0)) {
-          console.log('Projects table exists but is empty, seeding with REAL_PROJECTS');
+          .select('url');
           
-          // Table is empty, add seed data
-          if (REAL_PROJECTS && REAL_PROJECTS.length > 0) {
-            const { error: seedError } = await supabase
-              .from(PROJECTS_TABLE)
-              .insert(REAL_PROJECTS);
-            
-            if (seedError) {
-              console.log('Error seeding projects table');
-            } else {
-              console.log(`Seeded projects table with ${REAL_PROJECTS.length} initial projects`);
-            }
+        if (fetchError) {
+          console.warn('Error fetching existing projects from Supabase:', fetchError.message);
+          return this.saveProjectsToLocalStorage(projects);
+        }
+        
+        // Create a set of existing URLs for faster lookup
+        const existingUrls = new Set<string>();
+        existingProjects?.forEach(project => {
+          if (project.url) {
+            existingUrls.add(project.url);
           }
+        });
+        
+        // Filter out projects that already exist in the database
+        const newProjects = projects.filter(project => 
+          project.url && !existingUrls.has(project.url)
+        );
+        
+        console.log(`Found ${existingUrls.size} existing projects in Supabase, adding ${newProjects.length} new ones`);
+        
+        if (newProjects.length === 0) {
+          console.log('No new projects to add to Supabase');
+          return 0;
         }
+        
+        // Insert new projects into Supabase
+        const { error: insertError } = await supabase
+          .from(PROJECTS_TABLE)
+          .insert(newProjects);
+          
+        if (insertError) {
+          console.warn('Error inserting projects into Supabase:', insertError.message);
+          return this.saveProjectsToLocalStorage(projects);
+        }
+        
+        // Also update localStorage as a cache
+        this.saveProjectsToLocalStorage(projects);
+        
+        return newProjects.length;
       } catch (error) {
-        console.log('Error checking table data');
+        console.warn('Error in Supabase addProjects:', error);
+        return this.saveProjectsToLocalStorage(projects);
       }
+    } else {
+      // Fallback to localStorage
+      return this.saveProjectsToLocalStorage(projects);
     }
   }
-
+  
   /**
-   * Ensure projects table exists and has data
+   * Save projects to localStorage and return the number added
+   * Used as a fallback and for caching
    */
-  public async ensureProjectsTable(): Promise<void> {
+  private saveProjectsToLocalStorage(newProjects: Agent[]): number {
     try {
-      // Check if table exists, create if needed
-      await this.checkSupabaseAvailability();
+      // Get existing projects from localStorage
+      const existingProjectsJson = localStorage.getItem('directory_projects');
+      let existingProjects: Agent[] = [];
       
-      // If not available, we'll just use local storage instead
-      if (!this.isSupabaseAvailable) {
-        return;
-      }
-      
-      // If table exists but has no data, initialize with sample data
-      const { data, error } = await supabase
-        .from(PROJECTS_TABLE)
-        .select('id')
-        .limit(1);
-      
-      if (!error && (!data || data.length === 0)) {
-        console.log('Projects table exists but is empty. Adding sample data...');
+      if (existingProjectsJson) {
         try {
-          await this.addProjects(REAL_PROJECTS);
-          console.log(`Added ${REAL_PROJECTS.length} sample projects to table`);
-        } catch (addError) {
-          console.log('Could not add sample data to projects table');
+          existingProjects = JSON.parse(existingProjectsJson);
+          if (!Array.isArray(existingProjects)) {
+            existingProjects = [];
+          }
+        } catch (e) {
+          console.error('Error parsing localStorage projects:', e);
+          existingProjects = [];
         }
       }
-    } catch (error) {
-      console.log('Error ensuring projects table. Using local data instead.');
-      this.isSupabaseAvailable = false;
+      
+      console.log(`Found ${existingProjects.length} existing projects in localStorage`);
+      
+      // Create a map of URLs to avoid duplicates
+      const projectMap = new Map<string, Agent>();
+      
+      // Add existing projects to map
+      existingProjects.forEach(project => {
+        if (project.url) {
+          projectMap.set(project.url, project);
+        }
+      });
+      
+      // Count how many new unique projects we're adding
+      let newUniqueCount = 0;
+      
+      // Add new projects to map (will overwrite existing ones with same URL)
+      newProjects.forEach(project => {
+        if (project.url) {
+          // If this is a new URL we haven't seen before, increment counter
+          if (!projectMap.has(project.url)) {
+            newUniqueCount++;
+          }
+          projectMap.set(project.url, project);
+        }
+      });
+      
+      // Convert map back to array
+      const mergedProjects = Array.from(projectMap.values());
+      
+      // Save back to localStorage
+      localStorage.setItem('directory_projects', JSON.stringify(mergedProjects));
+      console.log(`Saved ${mergedProjects.length} total projects to localStorage (${newUniqueCount} new unique projects)`);
+      
+      // Trigger storage event for other components to detect
+      localStorage.setItem('directory_updated', Date.now().toString());
+      
+      // Return number of new unique projects added
+      return newUniqueCount;
+    } catch (e) {
+      console.error('Error saving to localStorage:', e);
+      return 0;
     }
   }
-
+  
   /**
-   * Get all projects from Supabase or fallback to REAL_PROJECTS
+   * Get all projects, first trying Supabase then falling back to localStorage
    */
   public async getAllProjects(): Promise<Agent[]> {
-    if (!this.isSupabaseAvailable) {
-      console.log('Supabase not available, using fallback data');
-      return REAL_PROJECTS;
+    // Try Supabase first if available
+    if (this.isSupabaseAvailable) {
+      try {
+        const { data, error } = await supabase
+          .from(PROJECTS_TABLE)
+          .select('*');
+          
+        if (error) {
+          console.warn('Error fetching projects from Supabase:', error.message);
+        } else if (data && data.length > 0) {
+          console.log(`Retrieved ${data.length} projects from Supabase`);
+          
+          // Update localStorage as a cache
+          localStorage.setItem('directory_projects', JSON.stringify(data));
+          return data;
+        } else {
+          console.log('No projects found in Supabase');
+        }
+      } catch (error) {
+        console.warn('Error in Supabase getAllProjects:', error);
+      }
     }
     
+    // Fallback to localStorage
     try {
-      console.log('Fetching all projects from storage');
-      // Increase the query limit to ensure we get ALL projects
-      const { data, error } = await supabase
-        .from(PROJECTS_TABLE)
-        .select('*')
-        .limit(100); // Increased from default 20 to 100 to ensure all projects are retrieved
-
-      if (error) {
-        console.log('Could not fetch projects from storage, using fallback data');
-        this.isSupabaseAvailable = false;
-        return REAL_PROJECTS;
+      const localData = localStorage.getItem('directory_projects');
+      if (localData) {
+        const projects = JSON.parse(localData);
+        if (Array.isArray(projects) && projects.length > 0) {
+          console.log(`Using ${projects.length} projects from localStorage`);
+          return projects;
+        }
       }
-
-      if (!data || data.length === 0) {
-        console.log('No projects found in storage, returning fallback data');
-        return REAL_PROJECTS;
-      }
-
-      console.log(`Fetched ${data.length} projects from storage`);
-      return data;
-    } catch (error) {
-      console.log('Failed to fetch projects, using fallback data');
-      this.isSupabaseAvailable = false;
-      return REAL_PROJECTS;
+    } catch (e) {
+      console.error('Error reading from localStorage:', e);
     }
+    
+    // Final fallback to hardcoded projects
+    console.log('No projects in localStorage, using hardcoded REAL_PROJECTS');
+    
+    // If we're using the fallback projects and Supabase is available,
+    // let's populate Supabase with these as a starter set
+    if (this.isSupabaseAvailable) {
+      try {
+        const { error } = await supabase
+          .from(PROJECTS_TABLE)
+          .insert(REAL_PROJECTS);
+          
+        if (error) {
+          console.warn('Error populating Supabase with default projects:', error.message);
+        } else {
+          console.log('Successfully populated Supabase with default projects');
+        }
+      } catch (error) {
+        console.warn('Error populating Supabase:', error);
+      }
+    }
+    
+    // Save to localStorage as well
+    this.saveProjectsToLocalStorage(REAL_PROJECTS);
+    return REAL_PROJECTS;
   }
 
   /**
-   * Add a single project to Supabase
+   * Add a single project to the database
    */
   public async addProject(project: Agent): Promise<boolean> {
-    if (!this.isSupabaseAvailable) {
-      console.log('Storage not available, skipping project addition');
-      return false;
+    // Try Supabase first if available
+    if (this.isSupabaseAvailable) {
+      try {
+        // Check if project already exists
+        const { data, error: checkError } = await supabase
+          .from(PROJECTS_TABLE)
+          .select('id')
+          .eq('url', project.url)
+          .limit(1);
+          
+        if (checkError) {
+          console.warn('Error checking for existing project in Supabase:', checkError.message);
+        } else if (data && data.length > 0) {
+          console.log('Project already exists in Supabase');
+          return false;
+        }
+        
+        // Insert the new project
+        const { error: insertError } = await supabase
+          .from(PROJECTS_TABLE)
+          .insert([project]);
+          
+        if (insertError) {
+          console.warn('Error inserting project into Supabase:', insertError.message);
+        } else {
+          console.log('Successfully added project to Supabase');
+          
+          // Also update localStorage
+          this.addProjectToLocalStorage(project);
+          return true;
+        }
+      } catch (error) {
+        console.warn('Error in Supabase addProject:', error);
+      }
     }
-
+    
+    // Fallback to localStorage
+    return this.addProjectToLocalStorage(project);
+  }
+  
+  /**
+   * Add a single project to localStorage
+   */
+  private addProjectToLocalStorage(project: Agent): boolean {
     try {
       // Check if the project already exists
-      const { data: checkData, error: checkError } = await supabase
-        .from(PROJECTS_TABLE)
-        .select('id')
-        .eq('url', project.url)
-        .limit(1);
+      const existingProjectsJson = localStorage.getItem('directory_projects');
+      let existingProjects: Agent[] = [];
       
-      if (checkError) {
-        console.log('Could not check if project exists in storage');
+      if (existingProjectsJson) {
+        try {
+          existingProjects = JSON.parse(existingProjectsJson);
+          if (!Array.isArray(existingProjects)) {
+            existingProjects = [];
+          }
+        } catch (e) {
+          console.error('Error parsing localStorage projects:', e);
+          existingProjects = [];
+        }
+      }
+      
+      // Check if project already exists in localStorage
+      const existingProject = existingProjects.find(p => p.url === project.url);
+      
+      if (existingProject) {
+        console.log('Project already exists in localStorage');
         return false;
       }
       
-      // Project already exists
-      if (checkData && checkData.length > 0) {
-        return false;
-      }
+      // Add project to localStorage
+      const newProjects = [...existingProjects, project];
+      localStorage.setItem('directory_projects', JSON.stringify(newProjects));
+      console.log('Added project to localStorage');
       
-      // Add project to Supabase
-      const { error } = await supabase
-        .from(PROJECTS_TABLE)
-        .insert([project]);
-      
-      if (error) {
-        console.log('Could not add project to storage');
-        return false;
-      }
+      // Trigger storage event for other components to detect
+      localStorage.setItem('directory_updated', Date.now().toString());
       
       return true;
     } catch (error) {
@@ -228,116 +336,65 @@ export class SupabaseService {
   }
 
   /**
-   * Add multiple projects to Supabase
-   */
-  public async addProjects(projects: Agent[]): Promise<number> {
-    if (!this.isSupabaseAvailable || !projects || projects.length === 0) {
-      return 0;
-    }
-
-    try {
-      // Fetch existing project URLs to avoid duplicates
-      const { data: existingProjects, error: fetchError } = await supabase
-        .from(PROJECTS_TABLE)
-        .select('url');
-      
-      if (fetchError) {
-        console.log('Could not fetch existing projects from storage');
-        return 0;
-      }
-      
-      // Get set of existing URLs
-      const existingUrls = new Set(existingProjects?.map(p => p.url) || []);
-      
-      // Filter out projects that already exist
-      const newProjects = projects.filter(p => !existingUrls.has(p.url));
-      
-      if (newProjects.length === 0) {
-        console.log('No new projects to add');
-        return 0;
-      }
-      
-      console.log(`Adding ${newProjects.length} new projects to storage`);
-      
-      // Add projects in chunks to avoid request size limits
-      const chunkSize = 50;
-      let addedCount = 0;
-      
-      for (let i = 0; i < newProjects.length; i += chunkSize) {
-        const chunk = newProjects.slice(i, i + chunkSize);
-        try {
-          const { error } = await supabase
-            .from(PROJECTS_TABLE)
-            .insert(chunk);
-          
-          if (error) {
-            console.log('Could not add some projects to storage');
-          } else {
-            addedCount += chunk.length;
-          }
-        } catch (error) {
-          console.log('Error in batch project addition');
-        }
-      }
-      
-      return addedCount;
-    } catch (error) {
-      console.log('Error in projects addition process');
-      return 0;
-    }
-  }
-
-  /**
-   * Search for projects by query in Supabase or REAL_PROJECTS
+   * Search for projects by query
    */
   public async searchProjects(query: string): Promise<Agent[]> {
-    // If Supabase is not available, search in REAL_PROJECTS
-    if (!this.isSupabaseAvailable) {
-      console.log('Searching projects in REAL_PROJECTS for:', query);
-      
-      if (!query || query.trim() === '') {
-        return REAL_PROJECTS;
-      }
-      
-      // Normalize query
-      const normalizedQuery = query.toLowerCase().trim();
-      
-      // Filter REAL_PROJECTS
-      const results = REAL_PROJECTS.filter(project => {
-        const name = project.name?.toLowerCase() || '';
-        const description = project.description?.toLowerCase() || '';
-        const language = project.language?.toLowerCase() || '';
-        const owner = project.owner?.toLowerCase() || '';
-        const topics = project.topics || [];
+    // Try Supabase first if available
+    if (this.isSupabaseAvailable) {
+      try {
+        if (!query || query.trim() === '') {
+          // Get all projects if no query
+          return this.getAllProjects();
+        }
         
-        return (
-          name.includes(normalizedQuery) ||
-          description.includes(normalizedQuery) ||
-          language.includes(normalizedQuery) ||
-          owner.includes(normalizedQuery) ||
-          topics.some(topic => topic.toLowerCase().includes(normalizedQuery))
-        );
-      });
-      
-      console.log(`Found ${results.length} matching projects in REAL_PROJECTS`);
-      return results;
+        // Normalize query
+        const normalizedQuery = query.toLowerCase().trim();
+        
+        // Search in Supabase using ILIKE for text fields
+        // Note: This is a simplified search that only checks name, description, and language
+        // For more complex searches, you might want to implement a dedicated search feature in Supabase
+        const { data, error } = await supabase
+          .from(PROJECTS_TABLE)
+          .select('*')
+          .or(`name.ilike.%${normalizedQuery}%,description.ilike.%${normalizedQuery}%,language.ilike.%${normalizedQuery}%,owner.ilike.%${normalizedQuery}%`);
+          
+        if (error) {
+          console.warn('Error searching projects in Supabase:', error.message);
+        } else if (data && data.length > 0) {
+          console.log(`Found ${data.length} matching projects in Supabase`);
+          return data;
+        } else {
+          console.log('No matching projects found in Supabase');
+        }
+      } catch (error) {
+        console.warn('Error in Supabase searchProjects:', error);
+      }
     }
     
+    // Fallback to localStorage search
     try {
-      console.log(`Searching for projects with query: "${query}"`);
+      // Get all projects from localStorage
+      const localData = localStorage.getItem('directory_projects');
+      let projects: Agent[] = [];
+      
+      if (localData) {
+        projects = JSON.parse(localData);
+        if (!Array.isArray(projects)) {
+          projects = REAL_PROJECTS;
+        }
+      } else {
+        projects = REAL_PROJECTS;
+      }
       
       if (!query || query.trim() === '') {
-        return this.getAllProjects();
+        return projects;
       }
       
       // Normalize query
       const normalizedQuery = query.toLowerCase().trim();
       
-      // Get all projects and filter on client side
-      const allProjects = await this.getAllProjects();
-      
-      // Filter by name, description, or other searchable fields
-      const results = allProjects.filter(project => {
+      // Filter projects
+      const results = projects.filter(project => {
         const name = project.name?.toLowerCase() || '';
         const description = project.description?.toLowerCase() || '';
         const language = project.language?.toLowerCase() || '';
@@ -349,16 +406,15 @@ export class SupabaseService {
           description.includes(normalizedQuery) ||
           language.includes(normalizedQuery) ||
           owner.includes(normalizedQuery) ||
-          topics.some(topic => topic.toLowerCase().includes(normalizedQuery))
+          topics.some(topic => typeof topic === 'string' && topic.toLowerCase().includes(normalizedQuery))
         );
       });
       
-      console.log(`Found ${results.length} projects matching query: "${query}"`);
+      console.log(`Found ${results.length} matching projects in localStorage`);
       return results;
-    } catch (error) {
-      console.log('Error searching projects');
-      this.isSupabaseAvailable = false;
-      return this.searchProjects(query); // Recursive call using REAL_PROJECTS
+    } catch (e) {
+      console.error('Error searching projects in localStorage:', e);
+      return REAL_PROJECTS;
     }
   }
 }

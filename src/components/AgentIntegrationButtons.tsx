@@ -66,13 +66,27 @@ const AgentIntegrationButtons = ({ repoUrl, projectName }: AgentIntegrationButto
       description: `${projectName} has been successfully imported to ${platform}`,
     });
     
-    // Open the respective website based on the platform
+    // Check for local installation first, then redirect to website if none found
+    const checkLocalInstallAndOpenWebsite = (protocol: string, websiteUrl: string) => {
+      // Try to open with custom protocol
+      const protocolCheck = window.open(protocol, '_blank');
+      
+      // Set a timeout to check if the protocol handler worked
+      setTimeout(() => {
+        // If protocol handler didn't work or was blocked, open the website
+        if (!protocolCheck || protocolCheck.closed || protocolCheck.location.href === 'about:blank') {
+          window.open(websiteUrl, '_blank');
+        }
+      }, 1000); // Wait 1 second to see if the protocol handler worked
+    };
+    
+    // Attempt local installation first, fall back to website
     if (platform === 'Framer') {
       window.open('https://www.framer.com', '_blank');
     } else if (platform === 'Cursor AI') {
-      window.open('https://cursor.sh', '_blank');
+      checkLocalInstallAndOpenWebsite('cursor://open', 'https://cursor.sh');
     } else if (platform === 'Windsurf AI') {
-      window.open('https://windsurf.io', '_blank');
+      checkLocalInstallAndOpenWebsite('windsurf://open', 'https://windsurf.io');
     }
     
     // Reset after showing completion

@@ -393,6 +393,60 @@ export class GitHubService {
   }
   
   /**
+   * Force a refresh of agent data by clearing caches and fetching fresh data from Supabase
+   */
+  public static async refreshAgentData(): Promise<Agent[]> {
+    try {
+      console.log('📢 GitHubService: Force-refreshing agent data from Supabase');
+      
+      // Clear all caches to ensure fresh data
+      cachedAgents = [];
+      
+      // Clear localStorage cache for agents
+      try {
+        localStorage.removeItem('directory_projects');
+        console.log('📢 Cleared localStorage cache');
+      } catch (e) {
+        console.error('Error clearing localStorage:', e);
+      }
+      
+      // Clear window cache if it exists
+      if (typeof window !== 'undefined' && window.__AGENT_CACHE__) {
+        window.__AGENT_CACHE__ = null;
+        console.log('📢 Cleared window.__AGENT_CACHE__');
+      }
+      
+      // Fetch fresh data directly from Supabase
+      const supabaseInstance = supabaseService;
+      const freshData = await supabaseInstance.getAllProjects();
+      
+      console.log(`📢 GitHubService: Refreshed data contains ${freshData.length} agents`);
+      
+      // Update our in-memory cache with fresh data
+      cachedAgents = [...freshData];
+      
+      // Store in window cache for cross-component access
+      if (typeof window !== 'undefined') {
+        window.__AGENT_CACHE__ = { agents: freshData, timestamp: Date.now() };
+        console.log('📢 Updated window.__AGENT_CACHE__ with fresh data');
+        
+        // Trigger storage event to notify components
+        try {
+          localStorage.setItem('agent_cache_updated', Date.now().toString());
+          console.log('📢 Triggered localStorage event for components');
+        } catch (e) {
+          console.error('Error triggering storage event:', e);
+        }
+      }
+      
+      return freshData;
+    } catch (error) {
+      console.error('Error refreshing agent data:', error);
+      return REAL_PROJECTS; // Fallback to REAL_PROJECTS if refresh fails
+    }
+  }
+  
+  /**
    * Add a project from GitHub URL
    */
   static async addProjectFromGitHub(url: string): Promise<{success: boolean, error?: string, agent?: Agent}> {
@@ -494,60 +548,6 @@ export class GitHubService {
     }
   }
   
-  /**
-   * Refresh agent data (used after bulk import)
-   */
-  static async refreshAgentData(): Promise<Agent[]> {
-    try {
-      console.log('Refreshing agent data...');
-      
-      // Try to load data from Supabase directly without calling getAllProjects
-      let freshData: Agent[] = [];
-      
-      try {
-        // Ensure projects table exists
-        await supabaseService.ensureProjectsTable();
-        
-        // Try to get projects from Supabase directly
-        freshData = await supabaseService.getAllProjects();
-        console.log(`Refreshed data with ${freshData.length} projects from database`);
-      } catch (supabaseError) {
-        console.log('Could not refresh from database, using localStorage');
-        // Fall back to localStorage if Supabase fails
-      }
-      
-      // If no data from Supabase or if array is empty, try localStorage fallback
-      if (!freshData || freshData.length === 0) {
-        try {
-          const localProjects = localStorage.getItem('directory_projects');
-          if (localProjects) {
-            const parsedProjects = JSON.parse(localProjects);
-            if (Array.isArray(parsedProjects) && parsedProjects.length > 0) {
-              freshData = parsedProjects;
-              console.log(`Using ${freshData.length} projects from localStorage`);
-            }
-          }
-        } catch (localError) {
-          console.log('Error reading from localStorage fallback');
-        }
-      }
-      
-      // If still no data, use REAL_PROJECTS as final fallback
-      if (!freshData || freshData.length === 0) {
-        console.log('Using REAL_PROJECTS fallback');
-        freshData = REAL_PROJECTS;
-      }
-      
-      // Important: Update cached data in memory for immediate access
-      cachedAgents = [...freshData];
-      
-      return freshData;
-    } catch (error) {
-      console.log('Error refreshing agent data, using fallback data');
-      return REAL_PROJECTS;
-    }
-  }
-
   /**
    * Initialize the data in the correct order
    */

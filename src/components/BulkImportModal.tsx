@@ -111,8 +111,8 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
       console.log(`Searching with${tokenFromStorage ? '' : 'out'} GitHub token...`);
       
       // Always allow search to proceed, with or without token
-      const results = await ScrapeService.scrapeGitHubRepositories(searchQuery, isFirstImport, tokenFromStorage);
-      
+      const results = await ScrapeService.scrapeGitHubRepositories(searchQuery, isFirstImport);
+
       if (results.length > 0) {
         const newRepositories = results.filter(repo => 
           repo && repo.url && !existingProjectUrls?.includes(repo.url)
@@ -187,7 +187,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
 
         setShowSatisfactionQuery(true);
 
-        // Show a success toast
+        // Success toast
         toast({
           title: 'Import Complete',
           description: `Successfully imported ${newRepositories.length} AI Agent and MCP repositories.`,
@@ -303,6 +303,131 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
     }
   };
 
+  const handleAddProjects = async () => {
+    setIsLoading(true);
+    setStatus('Adding selected projects to directory...');
+
+    try {
+      // Get all currently selected projects
+      const projectsToAdd = searchResults.filter(
+        (_, index) => true // Always add all projects
+      );
+
+      if (projectsToAdd.length === 0) {
+        setError('No projects selected for import');
+        setIsLoading(false);
+        return;
+      }
+
+      console.log(`Adding ${projectsToAdd.length} projects to directory`);
+      
+      // Convert URLs to Agent objects to submit
+      const newAgentObjects = projectsToAdd.map((url, index) => ({
+        id: `user-submitted-${Date.now()}-${index}`,
+        name: url.split('/').pop() || `Repository ${index + 1}`,
+        description: 'User-submitted AI Agent or MCP project',
+        url,
+        stars: 0,
+        forks: 0,
+        language: '',
+        license: '',
+        updated: new Date().toISOString().split('T')[0],
+        owner: url.split('/')[3] || 'unknown',
+        avatar: '',
+        topics: ['ai', 'agent', 'user-submitted'],
+        isLoading: false
+      }));
+
+      try {
+        // Step 1: First get existing projects from localStorage
+        const existingProjectsJson = localStorage.getItem('directory_projects');
+        let existingProjects: Agent[] = [];
+        
+        if (existingProjectsJson) {
+          try {
+            existingProjects = JSON.parse(existingProjectsJson);
+            if (!Array.isArray(existingProjects)) {
+              existingProjects = [];
+            }
+            console.log(`Found ${existingProjects.length} existing projects in localStorage`);
+          } catch (e) {
+            console.error('Error parsing localStorage projects:', e);
+          }
+        }
+
+        // Step 2: Create map to avoid duplicates by URL
+        const projectMap = new Map<string, Agent>();
+        
+        // Add existing projects to map
+        existingProjects.forEach(project => {
+          if (project.url) {
+            projectMap.set(project.url, project);
+          }
+        });
+        
+        // Add new projects to map
+        newAgentObjects.forEach(project => {
+          if (project.url) {
+            projectMap.set(project.url, project);
+          }
+        });
+        
+        // Convert map back to array - this contains BOTH existing and new projects
+        const allProjects = Array.from(projectMap.values());
+        
+        console.log(`Combined projects: ${allProjects.length} total (${existingProjects.length} existing + ${newAgentObjects.length} new, with duplicates removed)`);
+        
+        // Step 3: Save combined list to localStorage
+        localStorage.setItem('directory_projects', JSON.stringify(allProjects));
+        
+        // Step 4: Trigger storage update event
+        localStorage.setItem('directory_updated', Date.now().toString());
+        
+        // Success toast
+        toast({
+          title: 'Import Complete',
+          description: `Successfully added ${newAgentObjects.length} projects to the directory. Total projects: ${allProjects.length}`
+        });
+        
+        // Call the parent component with ALL projects to guarantee update
+        if (onProjectsAdded) {
+          console.log('CRITICAL: Passing ALL projects to parent:', allProjects.length);
+          onProjectsAdded(allProjects);
+        } else {
+          console.error('WARNING: onProjectsAdded callback is not defined!');
+          // Force page reload if callback is missing
+          window.location.reload();
+        }
+        
+        // Final cleanup and close
+        setIsLoading(false);
+        setShowResults(false);
+        
+        if (onClose) {
+          onClose();
+        }
+      } catch (error) {
+        console.error('Error during project submission process:', error);
+        toast({
+          title: 'Error Adding Projects',
+          description: 'There was an error adding the projects to the directory.',
+          variant: 'destructive'
+        });
+        setIsLoading(false);
+        if (onClose) {
+          onClose();
+        }
+      }
+    } catch (error) {
+      console.error('Unexpected error in modal close handler:', error);
+      setIsLoading(false);
+      setShowResults(false);
+      if (onClose) {
+        onClose();
+      }
+    }
+  };
+
   const resetState = () => {
     setIsLoading(false);
     setProgress(0);
@@ -316,70 +441,7 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
   const handleModalClose = async (saveData: boolean) => {
     try {
       if (saveData && searchResults.length > 0) {
-        setIsLoading(true);
-        setStatus(`Saving ${searchResults.length} projects to directory...`);
-        
-        // Convert URLs to Agent objects to submit
-        const newAgentObjects = searchResults.map((url, index) => ({
-          id: `user-submitted-${Date.now()}-${index}`,
-          name: url.split('/').pop() || `Repository ${index + 1}`,
-          description: 'User-submitted AI Agent or MCP project',
-          url,
-          stars: 0,
-          forks: 0,
-          language: '',
-          license: '',
-          updated: new Date().toISOString().split('T')[0],
-          owner: url.split('/')[3] || 'unknown',
-          avatar: '',
-          topics: ['ai', 'agent', 'user-submitted'],
-          isLoading: false
-        }));
-
-        try {
-          // Submit the projects using GitHubService - process in smaller batches if needed
-          console.log('Submitting projects to GitHubService:', newAgentObjects.length);
-          await GitHubService.submitProjects(newAgentObjects);
-          
-          // CRITICAL: Get all projects, including the newly added ones
-          console.log('Getting ALL projects including new ones...');
-          const allProjects = await GitHubService.refreshAgentData();
-          
-          // Success toast
-          toast({
-            title: 'Import Complete',
-            description: `Successfully added ${newAgentObjects.length} projects to the directory.`,
-          });
-          
-          // Call the parent component with ALL projects to guarantee update
-          if (onProjectsAdded) {
-            console.log('CRITICAL: Passing ALL projects to parent:', allProjects.length);
-            onProjectsAdded(allProjects);
-          } else {
-            console.error('WARNING: onProjectsAdded callback is not defined!');
-            // Force page reload if callback is missing
-            window.location.reload();
-          }
-          
-          // Final cleanup and close
-          setIsLoading(false);
-          resetState();
-          
-          if (onClose) {
-            onClose();
-          }
-        } catch (error) {
-          console.error('Error during project submission process:', error);
-          toast({
-            title: 'Error Adding Projects',
-            description: 'There was an error adding the projects to the directory.',
-            variant: 'destructive'
-          });
-          setIsLoading(false);
-          if (onClose) {
-            onClose();
-          }
-        }
+        await handleAddProjects();
       } else {
         // No projects to save or user chose not to save
         resetState();
@@ -445,19 +507,19 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
               <p className="text-sm text-white/80">Are you satisfied with the import results?</p>
               <div className="flex gap-3">
                 <Button 
-                  variant="default" 
+                  variant="gradient" 
                   onClick={() => {
                     handleModalClose(true);
                     resetState();
                   }}
-                  className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none"
+                  size="sm"
                 >
                   Yes, I'm satisfied
                 </Button>
                 <Button 
-                  variant="outline" 
+                  variant="dark" 
                   onClick={() => setShowFeedbackForm(true)}
-                  className="border-white/10 bg-white/5 text-white hover:bg-white/10"
+                  size="sm"
                 >
                   No, provide feedback
                 </Button>
@@ -471,13 +533,13 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
                   id="feedback"
                   value={feedbackMessage}
                   onChange={(e) => setFeedbackMessage(e.target.value)}
-                  className="w-full h-32 rounded-md border border-white/10 bg-white/5 text-white p-2 focus:border-indigo-500 focus:ring-indigo-500"
+                  className="w-full h-32 rounded-md border border-white/10 bg-white/5 text-white placeholder:text-white/50 focus:border-indigo-500 focus:ring-indigo-500"
                   placeholder="Please share your feedback..."
                 />
               </div>
               <div className="flex gap-3">
                 <Button 
-                  variant="default" 
+                  variant="gradient" 
                   onClick={() => {
                     // Here you would typically send the feedback to a server
                     toast({
@@ -487,17 +549,17 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
                     handleModalClose(false);
                     resetState();
                   }}
-                  className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none"
+                  size="sm"
                 >
                   Submit Feedback
                 </Button>
                 <Button 
-                  variant="outline" 
+                  variant="dark" 
                   onClick={() => {
                     setShowFeedbackForm(false);
                     handleModalClose(false);
                   }}
-                  className="border-white/10 bg-white/5 text-white hover:bg-white/10"
+                  size="sm"
                 >
                   Back
                 </Button>
@@ -508,16 +570,14 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-medium text-white/90">Found {totalFound} repositories</h4>
                 <Button 
-                  variant="outline" 
+                  variant="dark" 
                   size="sm" 
                   onClick={() => {
                     handleModalClose(true);
                     resetState();
                   }}
-                  className="text-xs border-white/10 bg-white/5 text-white hover:bg-white/10"
                 >
-                  <Download className="w-3 h-3 mr-1" />
-                  Import All
+                  Back to Search
                 </Button>
               </div>
               
@@ -544,20 +604,6 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
                   ))}
                 </ul>
               </div>
-              
-              <div className="pt-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => {
-                    setShowResults(false);
-                    handleModalClose(false);
-                  }}
-                  className="text-xs border-white/10 bg-white/5 text-white hover:bg-white/10"
-                >
-                  Back to Search
-                </Button>
-              </div>
             </div>
           ) : showManualInput ? (
             <div className="space-y-4">
@@ -572,27 +618,14 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
                     className="flex-1 bg-white/5 border-white/10 text-white placeholder:text-white/50 focus:border-indigo-500"
                   />
                   <Button 
+                    variant="dark" 
                     onClick={handleManualImport}
                     disabled={!manualUrl.includes('github.com/')}
-                    className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none"
+                    size="sm"
                   >
                     Add
                   </Button>
                 </div>
-              </div>
-              
-              <div className="pt-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => {
-                    setShowManualInput(false);
-                    handleModalClose(false);
-                  }}
-                  className="text-xs border-white/10 bg-white/5 text-white hover:bg-white/10"
-                >
-                  Back to Search
-                </Button>
               </div>
             </div>
           ) : (
@@ -634,32 +667,35 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
           )}
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-3">
           {!isLoading && !showResults && !showSatisfactionQuery && !showFeedbackForm && (
-            <>
+            <div className="flex flex-col sm:flex-row gap-3 w-full">
               <Button 
-                variant="outline" 
-                onClick={() => {
-                  setShowManualInput(!showManualInput);
-                  handleModalClose(false);
-                }}
-                className="border-white/10 bg-white/5 text-white hover:bg-white/10"
+                variant="gradient" 
+                onClick={handleSearch}
+                size="sm"
+                disabled={isLoading}
               >
-                {showManualInput ? 'Auto Search' : 'Manual Entry'}
+                <Search className="w-4 h-4 mr-1" />
+                Find AI Agent Projects
               </Button>
               
-              <Button 
-                onClick={showManualInput ? handleManualImport : handleSearch}
-                disabled={showManualInput ? !manualUrl.includes('github.com/') : false}
-                className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white border-none"
-              >
-                {showManualInput ? 'Add Repository' : 'Search Repositories'}
-              </Button>
-            </>
+              {manualUrl && (
+                <Button 
+                  variant="dark" 
+                  onClick={handleManualImport}
+                  size="sm"
+                  disabled={isLoading}
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Manually
+                </Button>
+              )}
+            </div>
           )}
           
           {isLoading && (
-            <Button variant="outline" onClick={() => setIsLoading(false)} className="border-white/10 bg-white/5 text-white hover:bg-white/10">
+            <Button variant="dark" onClick={() => setIsLoading(false)}>
               Cancel
             </Button>
           )}

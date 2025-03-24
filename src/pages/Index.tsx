@@ -7,6 +7,8 @@ import { Layers, Heart, Github, Sparkles } from 'lucide-react';
 import AddProjectModal from '../components/AddProjectModal';
 import BulkImportModal from '../components/BulkImportModal';
 import { useToast } from '../components/ui/use-toast';
+import { Button } from '../components/ui/button';
+import { Agent } from '../types';
 
 const Index = () => {
   const { toast } = useToast();
@@ -78,14 +80,14 @@ const Index = () => {
     setIsBulkImportModalOpen(true);
   };
 
-  const handleProjectsAdded = async (count: number) => {
+  const handleProjectsAdded = async (agents: Agent[]) => {
     try {
       // Refresh the directory data
       await refreshData();
       
       toast({
         title: "Success",
-        description: `${count} project${count === 1 ? '' : 's'} added to the directory.`,
+        description: `${agents.length} project${agents.length === 1 ? '' : 's'} added to the directory.`,
       });
     } catch (error) {
       console.error("Error refreshing data after adding projects:", error);
@@ -157,15 +159,18 @@ const Index = () => {
                   href="https://www.paypal.com/donate?token=WyyhlBRzymlKv6XC8r4DYaLDx52x2gAHZGnnkNhyyKneaZ3ls9k4Ot53_JDohCWmmTW6iHFPz9Qu_ySK" 
                   target="_blank" 
                   rel="noopener noreferrer"
+                  className="inline-block"
                 >
-                  <button 
-                    className="flex items-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-sm text-sm border border-indigo-400"
+                  <Button
+                    variant="gradient"
+                    size="sm"
+                    className="flex items-center gap-2"
                   >
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M20.067 8.478c.492.876.78 1.9.78 3.03 0 3.02-2.53 5.788-6.556 5.788a7.43 7.43 0 0 1-1.087-.08c-.31.818-1.079 1.392-1.98 1.392h-.57c-.383 0-.686-.317-.588-.688l.455-2.797c.038-.23.235-.402.47-.402h.618c.386 0 .734-.157.99-.41.15-.148.258-.332.328-.53.07-.2.09-.413.07-.625a7.11 7.11 0 0 1-.063-.918c0-3.02 2.53-5.788 6.557-5.788.89 0 1.73.183 2.496.51.285-.51.81-.853 1.418-.853h.57c.384 0 .687.317.589.688l-.455 2.796c-.038.23-.235.402-.47.402h-.618c-.653 0-1.218.44-1.404 1.07a5.26 5.26 0 0 1-.55 1.415zM9.482 5.108c-.381 0-.685-.317-.588-.688l.456-2.797c.038-.23.235-.402.47-.402h.617c.872 0 1.56.714 1.485 1.582-.032.368-.223.692-.504.9-.28.21-.624.317-.97.317H9.481zm-4.5 13.565c.032-.368.223-.692.504-.9.282-.21.624-.317.97-.317h.967c.383 0 .686.317.588.688l-.455 2.796c-.038.23-.235.402-.47.402h-.618c-.872 0-1.56-.714-1.485-1.582z"/>
                     </svg>
                     Donate
-                  </button>
+                  </Button>
                 </a>
               </div>
             </div>
@@ -189,9 +194,15 @@ const Index = () => {
       </footer>
       
       <AddProjectModal 
-        isOpen={isAddProjectModalOpen} 
+        isOpen={isAddProjectModalOpen}
         onClose={() => setIsAddProjectModalOpen(false)}
-        onProjectAdded={handleProjectsAdded}
+        onProjectAdded={(count) => {
+          refreshData();
+          toast({
+            title: "Success",
+            description: `${count} project${count === 1 ? '' : 's'} added to the directory.`,
+          });
+        }}
       />
       
       <BulkImportModal 
