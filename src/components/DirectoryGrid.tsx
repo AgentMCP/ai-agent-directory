@@ -78,7 +78,6 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
     try {
       // Force a fresh fetch from Supabase ONLY - no local storage
       console.log('DirectoryGrid: Forcing fresh fetch from Supabase');
-      const supabaseService = SupabaseService.getInstance();
       
       // Clear any local storage to prevent using cached data
       localStorage.removeItem('directory_projects');
@@ -88,26 +87,21 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
         .from(PROJECTS_TABLE)
         .select('*');
       
+      console.log('Supabase response:', { data, error });
+      
       if (error) {
         throw new Error(`Supabase error: ${error.message}`);
       }
-        
-      if (!data || data.length === 0) {
-        console.log('DirectoryGrid: No agents found in Supabase, using fallback data');
-        console.log('Setting fallback REAL_PROJECTS:', REAL_PROJECTS);
-        setAgents(REAL_PROJECTS);
-        setFilteredAgents(REAL_PROJECTS);
-        toast({
-          title: "Using Sample Data",
-          description: "No projects found in database, showing sample data instead.",
-        });
-      } else {
-        console.log(`DirectoryGrid: Loaded ${data.length} agents directly from Supabase`);
-        
-        // Remove duplicates by URL
-        const uniqueProjects: Agent[] = [];
-        const seenUrls = new Set<string>();
-        
+      
+      // IMPORTANT: Always use the data from Supabase, even if empty
+      // This ensures we don't use dummy data when the database is empty
+      console.log(`DirectoryGrid: Loaded ${data?.length || 0} agents directly from Supabase`);
+      
+      // Remove duplicates by URL
+      const uniqueProjects: Agent[] = [];
+      const seenUrls = new Set<string>();
+      
+      if (data && data.length > 0) {
         data.forEach(project => {
           if (project.url) {
             const normalizedUrl = project.url.toLowerCase().trim();
@@ -123,23 +117,30 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
         if (uniqueProjects.length < data.length) {
           console.log(`DirectoryGrid: Removed ${data.length - uniqueProjects.length} duplicate projects`);
         }
-        
-        setAgents(uniqueProjects);
-        setFilteredAgents(uniqueProjects);
+      }
+      
+      // Set agents regardless of whether they're empty
+      setAgents(uniqueProjects);
+      setFilteredAgents(uniqueProjects);
+      
+      // Only show a toast if we actually have data
+      if (uniqueProjects.length > 0) {
         toast({
           title: "Data Loaded",
           description: `Successfully loaded ${uniqueProjects.length} projects from database.`,
         });
+      } else {
+        // If Supabase returned empty data, let user know database is empty
+        toast({
+          title: "Database Empty",
+          description: "The Supabase database is empty. You can add projects to populate it.",
+        });
       }
     } catch (err) {
       console.error('DirectoryGrid: Error fetching agents:', err);
-      console.log('Setting fallback REAL_PROJECTS due to error');
-      setError('Failed to load directory data. Please try again later.');
-      setAgents(REAL_PROJECTS);
-      setFilteredAgents(REAL_PROJECTS);
       toast({
         title: "Error Loading Data",
-        description: "Failed to fetch data from database, showing sample data instead.",
+        description: "Failed to fetch data from database. See console for details.",
         variant: "destructive"
       });
     } finally {
