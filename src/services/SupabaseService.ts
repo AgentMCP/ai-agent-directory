@@ -251,44 +251,68 @@ export class SupabaseService {
    * Add a single project to the database
    */
   public async addProject(project: Agent): Promise<boolean> {
-    // Try Supabase first if available
-    if (this.isSupabaseAvailable) {
-      try {
-        // Check if project already exists
-        const { data, error: checkError } = await supabase
-          .from(PROJECTS_TABLE)
-          .select('id')
-          .eq('url', project.url)
-          .limit(1);
-          
-        if (checkError) {
-          console.warn('Error checking for existing project in Supabase:', checkError.message);
-        } else if (data && data.length > 0) {
-          console.log('Project already exists in Supabase');
-          return false;
-        }
-        
-        // Insert the new project
-        const { error: insertError } = await supabase
-          .from(PROJECTS_TABLE)
-          .insert([project]);
-          
-        if (insertError) {
-          console.warn('Error inserting project into Supabase:', insertError.message);
-        } else {
-          console.log('Successfully added project to Supabase');
-          
-          // Also update localStorage
-          this.addProjectToLocalStorage(project);
-          return true;
-        }
-      } catch (error) {
-        console.warn('Error in Supabase addProject:', error);
-      }
-    }
+    console.log('Adding project to Supabase:', project.url);
     
-    // Fallback to localStorage
-    return this.addProjectToLocalStorage(project);
+    try {
+      // First check if this URL already exists in our database
+      const existingProjects = await this.getAllProjects();
+      const isDuplicate = existingProjects.some(p => 
+        p.url && p.url.toLowerCase() === project.url.toLowerCase()
+      );
+      
+      if (isDuplicate) {
+        console.warn(`Project with URL ${project.url} already exists in the database`);
+        return false;
+      }
+      
+      // Try Supabase first if available
+      if (this.isSupabaseAvailable) {
+        try {
+          // Double-check if project already exists by URL
+          const { data, error: checkError } = await supabase
+            .from(PROJECTS_TABLE)
+            .select('id')
+            .ilike('url', project.url)
+            .limit(1);
+            
+          if (checkError) {
+            console.warn('Error checking for existing project in Supabase:', checkError.message);
+          } else if (data && data.length > 0) {
+            console.log('Project already exists in Supabase');
+            return false;
+          }
+          
+          // Insert the new project
+          const { error: insertError } = await supabase
+            .from(PROJECTS_TABLE)
+            .insert([project]);
+            
+          if (insertError) {
+            console.warn('Error inserting project into Supabase:', insertError.message);
+            
+            // If Supabase gives a unique violation error, it's a duplicate
+            if (insertError.code === '23505') { // Postgres unique violation code
+              console.log('Duplicate detected by Supabase constraint');
+              return false;
+            }
+          } else {
+            console.log('Successfully added project to Supabase');
+            
+            // Also update localStorage
+            this.addProjectToLocalStorage(project);
+            return true;
+          }
+        } catch (error) {
+          console.warn('Error in Supabase addProject:', error);
+        }
+      }
+      
+      // Fallback to localStorage
+      return this.addProjectToLocalStorage(project);
+    } catch (error) {
+      console.error('Error in project addition process:', error);
+      return false;
+    }
   }
   
   /**
