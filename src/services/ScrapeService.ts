@@ -199,7 +199,7 @@ const ScrapeService = {
     try {
       // Try to get token from localStorage but proceed even if missing
       const githubToken = localStorage.getItem('github_token') || '';
-      console.log(`Search with${githubToken ? '' : 'out'} GitHub token`);
+    
       
       // Try GitHub API first if token is available
       if (githubToken) {
@@ -239,10 +239,6 @@ const ScrapeService = {
           // Try with proper GitHub token format - no 'token' or 'Bearer' prefix as it might vary
           headers['Authorization'] = githubToken.startsWith('ghp_') ? `token ${githubToken}` : 
                                     (githubToken.startsWith('github_pat_') ? `token ${githubToken}` : githubToken);
-          
-          console.log('Using Authorization header:', 
-                     headers['Authorization'].substring(0, 10) + '...' + 
-                     headers['Authorization'].substring(headers['Authorization'].length - 5));
         }
         
         // Use GitHub search API to find repositories
