@@ -107,13 +107,45 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
       // Remove duplicates by URL
       const uniqueProjects: Agent[] = [];
       const seenUrls = new Set<string>();
+      const seenOwnerRepos = new Set<string>();
       
       if (data && data.length > 0) {
         data.forEach(project => {
           if (project.url) {
             const normalizedUrl = project.url.toLowerCase().trim();
-            if (!seenUrls.has(normalizedUrl)) {
-              seenUrls.add(normalizedUrl);
+            
+            // For GitHub URLs, extract and standardize the path portion
+            let standardizedUrl = normalizedUrl;
+            try {
+              if (normalizedUrl.includes('github.com')) {
+                const url = new URL(normalizedUrl);
+                // Get path without leading slash and remove any trailing slashes
+                let pathParts = url.pathname.split('/').filter(part => part);
+                // Keep only owner/repo part (first two segments)
+                if (pathParts.length >= 2) {
+                  standardizedUrl = `github.com/${pathParts[0].toLowerCase()}/${pathParts[1].toLowerCase()}`;
+                }
+              }
+            } catch (e) {
+              // URL parsing failed, use normalized URL as is
+              console.warn('URL parsing failed:', normalizedUrl);
+            }
+            
+            // Create a unique key for owner/name combination if available
+            const ownerRepoKey = project.owner && project.name ? 
+              `${project.owner.toLowerCase()}-${project.name.toLowerCase()}` : null;
+            
+            // Check if we've seen this URL or owner/repo combination before
+            if (!seenUrls.has(standardizedUrl) && 
+                (!ownerRepoKey || !seenOwnerRepos.has(ownerRepoKey))) {
+              
+              // Add to our tracking sets
+              seenUrls.add(standardizedUrl);
+              if (ownerRepoKey) {
+                seenOwnerRepos.add(ownerRepoKey);
+              }
+              
+              // Add to unique projects
               uniqueProjects.push(project);
             }
           } else {

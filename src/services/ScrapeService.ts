@@ -84,16 +84,33 @@ const ScrapeService = {
       // Normalize URL for comparison
       const normalizedUrl = project.url.toLowerCase().trim();
       
+      // For GitHub URLs, extract and standardize the path portion
+      let standardizedUrl = normalizedUrl;
+      try {
+        if (normalizedUrl.includes('github.com')) {
+          const url = new URL(normalizedUrl);
+          // Get path without leading slash and remove any trailing slashes
+          let pathParts = url.pathname.split('/').filter(part => part);
+          // Keep only owner/repo part (first two segments)
+          if (pathParts.length >= 2) {
+            standardizedUrl = `github.com/${pathParts[0].toLowerCase()}/${pathParts[1].toLowerCase()}`;
+          }
+        }
+      } catch (e) {
+        // URL parsing failed, use normalized URL as is
+        console.warn('URL parsing failed:', normalizedUrl);
+      }
+      
       // Create a unique key for owner/name combination if available
       const ownerRepoKey = project.owner && project.name ? 
         `${project.owner.toLowerCase()}-${project.name.toLowerCase()}` : null;
       
       // Check if we've seen this URL or owner/repo combination before
-      if (!seenUrls.has(normalizedUrl) && 
+      if (!seenUrls.has(standardizedUrl) && 
           (!ownerRepoKey || !seenOwnerRepos.has(ownerRepoKey))) {
         
         // Add to our tracking sets
-        seenUrls.add(normalizedUrl);
+        seenUrls.add(standardizedUrl);
         if (ownerRepoKey) {
           seenOwnerRepos.add(ownerRepoKey);
         }
@@ -109,6 +126,85 @@ const ScrapeService = {
     return uniqueProjects;
   },
 
+  /**
+   * Function to remove duplicates by comparing with existing projects
+   */
+  removeDuplicatesWithExisting(newProjects: Agent[], existingProjects?: Agent[]): Agent[] {
+    // Get existing projects if not provided
+    const existing = existingProjects || this.getAllExistingProjects();
+    
+    // Create sets for fast lookup
+    const existingUrls = new Set<string>();
+    const existingOwnerRepos = new Set<string>();
+    
+    // Populate sets with existing project identifiers
+    for (const project of existing) {
+      if (project.url) {
+        const normalizedUrl = project.url.toLowerCase().trim();
+        existingUrls.add(normalizedUrl);
+        
+        // For GitHub URLs, extract and standardize the path portion
+        try {
+          if (normalizedUrl.includes('github.com')) {
+            const url = new URL(normalizedUrl);
+            // Get path without leading slash and remove any trailing slashes
+            let pathParts = url.pathname.split('/').filter(part => part);
+            // Keep only owner/repo part (first two segments)
+            if (pathParts.length >= 2) {
+              existingUrls.add(`github.com/${pathParts[0].toLowerCase()}/${pathParts[1].toLowerCase()}`);
+            }
+          }
+        } catch (e) {
+          // URL parsing failed, continue with original URL
+        }
+      }
+      
+      if (project.owner && project.name) {
+        existingOwnerRepos.add(`${project.owner.toLowerCase()}-${project.name.toLowerCase()}`);
+      }
+    }
+    
+    // Filter out duplicates
+    const uniqueProjects = newProjects.filter(project => {
+      if (!project.url) return false;
+      
+      const normalizedUrl = project.url.toLowerCase().trim();
+      
+      // For GitHub URLs, extract and standardize the path portion
+      let standardizedUrl = normalizedUrl;
+      try {
+        if (normalizedUrl.includes('github.com')) {
+          const url = new URL(normalizedUrl);
+          // Get path without leading slash and remove any trailing slashes
+          let pathParts = url.pathname.split('/').filter(part => part);
+          // Keep only owner/repo part (first two segments)
+          if (pathParts.length >= 2) {
+            standardizedUrl = `github.com/${pathParts[0].toLowerCase()}/${pathParts[1].toLowerCase()}`;
+          }
+        }
+      } catch (e) {
+        // URL parsing failed, use normalized URL as is
+      }
+      
+      const ownerRepoKey = project.owner && project.name ? 
+        `${project.owner.toLowerCase()}-${project.name.toLowerCase()}` : null;
+      
+      // Check if this project exists in our sets
+      const isDuplicate = existingUrls.has(normalizedUrl) || 
+                          existingUrls.has(standardizedUrl) ||
+                          (ownerRepoKey && existingOwnerRepos.has(ownerRepoKey));
+      
+      if (isDuplicate) {
+        console.log(`Filtering out existing project: ${project.name || 'Unnamed'} (${normalizedUrl})`);
+      }
+      
+      return !isDuplicate;
+    });
+    
+    console.log(`Filtered out ${newProjects.length - uniqueProjects.length} existing projects`);
+    return uniqueProjects;
+  },
+  
   /**
    * Get all existing projects from all sources
    */
@@ -127,51 +223,6 @@ const ScrapeService = {
     return this.removeDuplicates(combinedProjects);
   },
 
-  /**
-   * Function to remove duplicates by comparing with existing projects
-   */
-  removeDuplicatesWithExisting(newProjects: Agent[], existingProjects?: Agent[]): Agent[] {
-    // Get existing projects if not provided
-    const existing = existingProjects || this.getAllExistingProjects();
-    
-    // Create sets for fast lookup
-    const existingUrls = new Set<string>();
-    const existingOwnerRepos = new Set<string>();
-    
-    // Populate sets with existing project identifiers
-    for (const project of existing) {
-      if (project.url) {
-        existingUrls.add(project.url.toLowerCase().trim());
-      }
-      
-      if (project.owner && project.name) {
-        existingOwnerRepos.add(`${project.owner.toLowerCase()}-${project.name.toLowerCase()}`);
-      }
-    }
-    
-    // Filter out duplicates
-    const uniqueProjects = newProjects.filter(project => {
-      if (!project.url) return false;
-      
-      const normalizedUrl = project.url.toLowerCase().trim();
-      const ownerRepoKey = project.owner && project.name ? 
-        `${project.owner.toLowerCase()}-${project.name.toLowerCase()}` : null;
-      
-      // Check if this project exists in our sets
-      const isDuplicate = existingUrls.has(normalizedUrl) || 
-        (ownerRepoKey && existingOwnerRepos.has(ownerRepoKey));
-      
-      if (isDuplicate) {
-        console.log(`Filtering out existing project: ${project.name || 'Unnamed'} (${normalizedUrl})`);
-      }
-      
-      return !isDuplicate;
-    });
-    
-    console.log(`Filtered out ${newProjects.length - uniqueProjects.length} existing projects from ${newProjects.length} projects`);
-    return uniqueProjects;
-  },
-  
   /**
    * Scrape GitHub repositories for AI Agents and MCP tools
    * @param query Search query
