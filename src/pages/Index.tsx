@@ -156,7 +156,7 @@ const Index = () => {
               </p>
               <div className="flex justify-center mt-8">
                 <a 
-                  href="https://www.paypal.com/donate?token=WyyhlBRzymlKv6XC8r4DYaLDx52x2gAHZGnnkNhyyKneaZ3ls9k4Ot53_JDohCWmmTW6iHFPz9Qu_ySK" 
+                  href="https://www.paypal.com/donate/?hosted_button_id=UX72DF8RHEZEG" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="inline-block"
