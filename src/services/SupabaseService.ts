@@ -379,26 +379,46 @@ export class SupabaseService {
         return false;
       }
       
-      // Check for case-insensitive URL matches
-      const normalizedUrl = project.url.toLowerCase().trim();
-      const { data: caseInsensitiveMatches, error: caseError } = await supabase
-        .from(PROJECTS_TABLE)
-        .select('id, url')
-        .ilike('url', `%${normalizedUrl.replace(/^https?:\/\/(www\.)?/i, '')}%`) // Match URL without protocol and www
-        .limit(5);
-        
-      if (caseError) {
-        console.error('Error checking for case-insensitive match:', caseError);
-        // Continue anyway
-      } else if (caseInsensitiveMatches && caseInsensitiveMatches.length > 0) {
-        // Check if any of the returned URLs match the normalized URL
-        for (const match of caseInsensitiveMatches) {
-          const matchNormalized = match.url.toLowerCase().trim();
-          if (matchNormalized === normalizedUrl || 
-              matchNormalized.replace(/^https?:\/\/(www\.)?/i, '') === normalizedUrl.replace(/^https?:\/\/(www\.)?/i, '')) {
-            console.log(`Project already exists with similar URL: ${project.url} (matched ${match.url})`);
-            return false;
+      // Check for GitHub URLs with different formats but same repo
+      if (project.url.includes('github.com')) {
+        try {
+          const url = new URL(project.url);
+          const pathParts = url.pathname.split('/').filter(part => part);
+          
+          if (pathParts.length >= 2) {
+            const owner = pathParts[0].toLowerCase();
+            const repo = pathParts[1].toLowerCase();
+            
+            // Look for any URL that contains this owner/repo combination
+            const { data: similarRepos, error: repoError } = await supabase
+              .from(PROJECTS_TABLE)
+              .select('id, url')
+              .ilike('url', `%github.com/${owner}/${repo}%`)
+              .limit(5);
+            
+            if (!repoError && similarRepos && similarRepos.length > 0) {
+              console.log(`Project already exists with similar repo: ${owner}/${repo}`);
+              return false;
+            }
+            
+            // Also check if owner and repo fields match
+            if (project.owner && project.name) {
+              const { data: ownerRepoMatch, error: ownerRepoError } = await supabase
+                .from(PROJECTS_TABLE)
+                .select('id')
+                .ilike('owner', owner)
+                .ilike('name', repo)
+                .limit(1);
+                
+              if (!ownerRepoError && ownerRepoMatch && ownerRepoMatch.length > 0) {
+                console.log(`Project already exists with matching owner/name: ${owner}/${repo}`);
+                return false;
+              }
+            }
           }
+        } catch (e) {
+          // URL parsing failed, continue with original checks
+          console.warn('URL parsing failed during duplicate check:', project.url);
         }
       }
       
@@ -431,11 +451,17 @@ export class SupabaseService {
         return false;
       }
       
-      // Also add to localStorage for immediate availability
-      this.addProjectToLocalStorage(project);
+      // After successfully adding to Supabase, trigger a refresh event
+      if (typeof window !== 'undefined') {
+        // Use a unique timestamp to ensure the event is always detected
+        localStorage.setItem('supabase_updated', Date.now().toString());
+        // Dispatch a custom event for components that don't listen to storage
+        window.dispatchEvent(new CustomEvent('supabase_updated'));
+      }
       
       console.log(`Successfully added project: ${project.name}`);
       return true;
+      
     } catch (error) {
       console.error('Exception in addProject:', error);
       return false;
@@ -641,6 +667,177 @@ export class SupabaseService {
       return true;
     } catch (error) {
       console.error('Error initializing projects table:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Save all projects to Supabase, handling duplicates intelligently
+   */
+  public async saveAllProjects(projects: Agent[]): Promise<boolean> {
+    try {
+      if (!projects || !Array.isArray(projects) || projects.length === 0) {
+        console.error('Invalid projects array provided to saveAllProjects');
+        return false;
+      }
+      
+      console.log(`Attempting to save ${projects.length} projects to Supabase`);
+      
+      // Get existing projects to check for duplicates
+      const { data: existingProjects, error: fetchError } = await supabase
+        .from(PROJECTS_TABLE)
+        .select('id, url, owner, name')
+        .limit(1000);
+        
+      if (fetchError) {
+        console.error('Error fetching existing projects:', fetchError);
+        return false;
+      }
+      
+      // Create maps for quick lookups
+      const existingUrlMap = new Map<string, string>(); // url -> id
+      const existingOwnerRepoMap = new Map<string, string>(); // owner/repo -> id
+      
+      if (existingProjects && existingProjects.length > 0) {
+        existingProjects.forEach(project => {
+          if (project.url) {
+            // Store normalized URL
+            existingUrlMap.set(project.url.toLowerCase().trim(), project.id);
+            
+            // Also try to extract and store github owner/repo 
+            try {
+              if (project.url.includes('github.com')) {
+                const url = new URL(project.url);
+                const pathParts = url.pathname.split('/').filter(part => part);
+                if (pathParts.length >= 2) {
+                  const repoKey = `${pathParts[0].toLowerCase()}/${pathParts[1].toLowerCase()}`;
+                  existingOwnerRepoMap.set(repoKey, project.id);
+                }
+              }
+            } catch (e) {
+              // Ignore URL parsing errors
+            }
+            
+            // Also use owner/name if available
+            if (project.owner && project.name) {
+              const ownerRepoKey = `${project.owner.toLowerCase()}/${project.name.toLowerCase()}`;
+              existingOwnerRepoMap.set(ownerRepoKey, project.id);
+            }
+          }
+        });
+      }
+      
+      console.log(`Found ${existingUrlMap.size} existing URLs and ${existingOwnerRepoMap.size} owner/repo combinations`);
+      
+      // Process projects in batches to avoid overwhelming the database
+      const batchSize = 25;
+      let successCount = 0;
+      let skipCount = 0;
+      let errorCount = 0;
+      
+      for (let i = 0; i < projects.length; i += batchSize) {
+        const batch = projects.slice(i, i + batchSize);
+        const toInsert = [];
+        
+        for (const project of batch) {
+          if (!project.url || !project.name) {
+            console.warn('Skipping project with missing required fields', project);
+            skipCount++;
+            continue;
+          }
+          
+          // Check for duplicates
+          let isDuplicate = false;
+          
+          // Check by URL
+          if (project.url) {
+            const normalizedUrl = project.url.toLowerCase().trim();
+            if (existingUrlMap.has(normalizedUrl)) {
+              isDuplicate = true;
+            } else {
+              // Check GitHub URLs
+              try {
+                if (normalizedUrl.includes('github.com')) {
+                  const url = new URL(normalizedUrl);
+                  const pathParts = url.pathname.split('/').filter(part => part);
+                  if (pathParts.length >= 2) {
+                    const repoKey = `${pathParts[0].toLowerCase()}/${pathParts[1].toLowerCase()}`;
+                    if (existingOwnerRepoMap.has(repoKey)) {
+                      isDuplicate = true;
+                    }
+                  }
+                }
+              } catch (e) {
+                // Ignore URL parsing errors
+              }
+            }
+          }
+          
+          // Also check by owner/name
+          if (!isDuplicate && project.owner && project.name) {
+            const ownerRepoKey = `${project.owner.toLowerCase()}/${project.name.toLowerCase()}`;
+            if (existingOwnerRepoMap.has(ownerRepoKey)) {
+              isDuplicate = true;
+            }
+          }
+          
+          if (isDuplicate) {
+            skipCount++;
+          } else {
+            // Prepare for insert
+            toInsert.push({
+              url: project.url,
+              name: project.name,
+              description: project.description || '',
+              owner: project.owner || '',
+              stars: project.stars || 0,
+              forks: project.forks || 0,
+              topics: project.topics || [],
+              language: project.language || 'Unknown',
+              license: project.license || 'Unknown',
+              updated: project.updated || new Date().toISOString(),
+              tags: project.tags || [],
+              avatar: project.avatar || ''
+            });
+            
+            // Add to our tracking sets to prevent duplicates in the same batch
+            existingUrlMap.set(project.url.toLowerCase().trim(), 'pending');
+            if (project.owner && project.name) {
+              existingOwnerRepoMap.set(`${project.owner.toLowerCase()}/${project.name.toLowerCase()}`, 'pending');
+            }
+          }
+        }
+        
+        if (toInsert.length > 0) {
+          console.log(`Inserting batch of ${toInsert.length} projects to Supabase`);
+          const { data, error } = await supabase
+            .from(PROJECTS_TABLE)
+            .insert(toInsert);
+            
+          if (error) {
+            console.error('Error inserting projects batch:', error);
+            errorCount += toInsert.length;
+          } else {
+            successCount += toInsert.length;
+            console.log(`Successfully inserted ${toInsert.length} projects`);
+          }
+        }
+      }
+      
+      console.log(`Completed saving projects. Success: ${successCount}, Skipped (duplicates): ${skipCount}, Errors: ${errorCount}`);
+      
+      // After successfully adding to Supabase, trigger a refresh event
+      if (typeof window !== 'undefined') {
+        // Use a unique timestamp to ensure the event is always detected
+        localStorage.setItem('supabase_updated', Date.now().toString());
+        // Dispatch a custom event for components that don't listen to storage
+        window.dispatchEvent(new CustomEvent('supabase_updated'));
+      }
+      
+      return successCount > 0;
+      
+    } catch (error) {
+      console.error('Exception in saveAllProjects:', error);
       return false;
     }
   }

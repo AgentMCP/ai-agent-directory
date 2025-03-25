@@ -116,23 +116,10 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
       console.log(`Searching with${tokenFromStorage ? '' : 'out'} GitHub token...`);
       
       // Always allow search to proceed, with or without token
-      const existingProjectsJson = localStorage.getItem('directory_projects');
-      let existingProjects: Agent[] = [];
-      
-      if (existingProjectsJson) {
-        try {
-          existingProjects = JSON.parse(existingProjectsJson);
-          if (!Array.isArray(existingProjects)) {
-            existingProjects = [];
-          }
-          console.log(`Found ${existingProjects.length} existing projects in localStorage`);
-        } catch (e) {
-          console.error('Error parsing localStorage projects:', e);
-        }
-      }
-
-      const existingProjectUrls = isFirstImport ? [] : existingProjects?.map(p => p.url) || [];
-      console.log(`Found ${existingProjectUrls.length} existing project URLs`);
+      const supabaseService = SupabaseService.getInstance();
+      const existingProjects = await supabaseService.getAllProjects();
+      const existingProjectUrls = existingProjects.map(project => project.url);
+      console.log(`Found ${existingProjectUrls.length} existing project URLs in Supabase`);
       
       // Try GitHub API search first if token is available
       const token = tokenFromStorage;
@@ -233,7 +220,6 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
         // Process repositories in batches to avoid UI freezing
         const processedRepos: string[] = [];
         const batchSize = 5; // Reduced batch size to avoid overwhelming Supabase
-        const supabaseService = SupabaseService.getInstance();
         let savedToSupabase = 0;
         let hasError = false;
         
@@ -529,22 +515,10 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
       }));
 
       try {
-        // Step 1: First get existing projects from localStorage
-        const existingProjectsJson = localStorage.getItem('directory_projects');
-        let existingProjects: Agent[] = [];
+        // Step 1: First get existing projects from Supabase
+        const supabaseService = SupabaseService.getInstance();
+        const existingProjects = await supabaseService.getAllProjects();
         
-        if (existingProjectsJson) {
-          try {
-            existingProjects = JSON.parse(existingProjectsJson);
-            if (!Array.isArray(existingProjects)) {
-              existingProjects = [];
-            }
-            console.log(`Found ${existingProjects.length} existing projects in localStorage`);
-          } catch (e) {
-            console.error('Error parsing localStorage projects:', e);
-          }
-        }
-
         // Step 2: Create map to avoid duplicates by URL
         const projectMap = new Map<string, Agent>();
         
@@ -567,11 +541,8 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
         
         console.log(`Combined projects: ${allProjects.length} total (${existingProjects.length} existing + ${newAgentObjects.length} new, with duplicates removed)`);
         
-        // Step 3: Save combined list to localStorage
-        localStorage.setItem('directory_projects', JSON.stringify(allProjects));
-        
-        // Step 4: Trigger storage update event
-        localStorage.setItem('directory_updated', Date.now().toString());
+        // Step 3: Save combined list to Supabase
+        await supabaseService.saveAllProjects(allProjects);
         
         // Success toast
         toast({

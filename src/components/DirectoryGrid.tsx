@@ -192,19 +192,28 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
     console.log('DirectoryGrid: Initial component mount, fetching data');
     fetchAgents();
     
-    // Set up localStorage listener to detect changes from other components
+    // Set up storage and custom event listeners to detect changes from other components
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'directory_updated') {
+      if (e.key === 'supabase_updated') {
         console.log('DirectoryGrid: Storage change detected, refreshing data');
         fetchAgents();
       }
     };
     
-    // Listen for storage events
+    // Event listener for custom event (for same-browser updates)
+    const handleCustomEvent = () => {
+      console.log('DirectoryGrid: Custom event detected, refreshing data');
+      fetchAgents();
+    };
+    
+    // Listen for storage events (for cross-browser updates)
     window.addEventListener('storage', handleStorageChange);
+    // Listen for custom events (for same-browser updates)
+    window.addEventListener('supabase_updated', handleCustomEvent);
     
     return () => {
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('supabase_updated', handleCustomEvent);
     };
   }, []);
   
