@@ -3,8 +3,8 @@ import { Agent } from '../types';
 import { REAL_PROJECTS } from './GitHubService';
 
 // Supabase configuration
-const SUPABASE_URL = 'https://tfhdkdkxlwtpgskytspc.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmaGRrZGt4bHd0cGdza3l0c3BjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI3NjI4MzIsImV4cCI6MjA1ODMzODgzMn0.iJo-rvb4mPMUQXZ1EYcTvepgUz7ZQ0Wn7EmuFRiEjmc';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://tfhdkdkxlwtpgskytspc.supabase.co';
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmaGRrZGt4bHd0cGdza3l0c3BjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI3NjI4MzIsImV4cCI6MjA1ODMzODgzMn0.iJo-rvb4mPMUQXZ1EYcTvepgUz7ZQ0Wn7EmuFRiEjmc';
 export const PROJECTS_TABLE = 'projects';
 
 // Initialize Supabase client
@@ -417,7 +417,8 @@ export class SupabaseService {
             language: project.language || 'Unknown',
             license: project.license || 'Unknown',
             updated: project.updated || new Date().toISOString(),
-            tags: project.tags || []
+            tags: project.tags || [],
+            avatar: project.avatar || ''  // Ensure avatar is included
           }
         ]);
       
@@ -429,6 +430,9 @@ export class SupabaseService {
         }
         return false;
       }
+      
+      // Also add to localStorage for immediate availability
+      this.addProjectToLocalStorage(project);
       
       console.log(`Successfully added project: ${project.name}`);
       return true;
@@ -569,6 +573,75 @@ export class SupabaseService {
     } catch (e) {
       console.error('Error searching projects in localStorage:', e);
       return REAL_PROJECTS;
+    }
+  }
+
+  /**
+   * Ensure the projects table exists
+   */
+  public async ensureProjectsTable(): Promise<boolean> {
+    try {
+      // Check if table exists by trying to select from it
+      const { error } = await supabase
+        .from(PROJECTS_TABLE)
+        .select('id')
+        .limit(1);
+      
+      if (error) {
+        // Table might not exist, try to create it
+        console.warn('Projects table may not exist, initializing table');
+        return await this.initializeTable();
+      }
+      
+      // Table exists
+      return true;
+    } catch (error) {
+      console.error('Error ensuring projects table exists:', error);
+      return false;
+    }
+  }
+  
+  /**
+   * Initialize the projects table structure
+   */
+  public async initializeTable(): Promise<boolean> {
+    try {
+      // Note: Table creation is typically handled by Supabase migrations
+      // This is a fallback for development environments
+      
+      console.log('Checking projects table status');
+      
+      // Try to insert a test record to see if the table is properly configured
+      const testProject = {
+        url: 'https://github.com/test/test-project',
+        name: 'Test Project',
+        description: 'Test project for table initialization',
+        isTest: true
+      };
+      
+      const { error } = await supabase
+        .from(PROJECTS_TABLE)
+        .upsert([testProject], { onConflict: 'url' });
+      
+      if (error && error.code === '42P01') {
+        console.error('Table does not exist and cannot be created from client side.');
+        return false;
+      } else if (error) {
+        console.error('Table exists but has errors:', error);
+        return false;
+      }
+      
+      // Clean up test entry
+      await supabase
+        .from(PROJECTS_TABLE)
+        .delete()
+        .eq('url', testProject.url);
+      
+      console.log('Projects table initialized successfully');
+      return true;
+    } catch (error) {
+      console.error('Error initializing projects table:', error);
+      return false;
     }
   }
 }

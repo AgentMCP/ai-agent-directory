@@ -440,16 +440,22 @@ const ScrapeService = {
    * @param token GitHub token
    * @returns Array of repository information
    */
-  async searchWithGitHubAPI(query: string, token: string): Promise<any[]> {
+  async searchWithGitHubAPI(query: string, token: string): Promise<Agent[]> {
     try {
-      console.log(`Searching GitHub API for: ${query}`);
-      
-      // GitHub search API (if token is available)
       const headers: Record<string, string> = {
-        'Accept': 'application/vnd.github.v3+json',
-        'Authorization': token.startsWith('ghp_') ? `token ${token}` : 
-                        (token.startsWith('github_pat_') ? `token ${token}` : token)
+        'Accept': 'application/vnd.github.v3+json'
       };
+      
+      // Validate and format the token properly
+      if (token) {
+        // Only apply token if it matches expected format patterns
+        if (token.startsWith('ghp_') || token.startsWith('github_pat_')) {
+          headers['Authorization'] = token.startsWith('ghp_') ? `token ${token}` : 
+                                    (token.startsWith('github_pat_') ? `token ${token}` : token);
+        } else {
+          console.warn('Invalid GitHub token format, skipping authorization header');
+        }
+      }
       
       // Use GitHub search API to find repositories
       const searchTerms = query.split(' ').filter(term => term.length > 2);

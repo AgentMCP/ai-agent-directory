@@ -359,10 +359,17 @@ export class GitHubService {
   
   static getAgentData = async (token?: string): Promise<{timestamp: string, agents: Agent[]}> => {
     try {
-      // Save token to localStorage if provided
+      // Save token to localStorage if provided, with basic validation
       if (token && token.trim()) {
-        localStorage.setItem('github_token', token.trim());
-        console.log('Updated GitHub token in localStorage');
+        // Validate token format before saving (basic check)
+        const cleanToken = token.trim();
+        // Only accept tokens that look like GitHub tokens (ghp_ or github_pat_)
+        if (cleanToken.startsWith('ghp_') || cleanToken.startsWith('github_pat_')) {
+          localStorage.setItem('github_token', cleanToken);
+          console.log('GitHub token updated');
+        } else {
+          console.warn('Invalid GitHub token format provided');
+        }
       }
       
       // Ensure we get all agents consistently across browsers
