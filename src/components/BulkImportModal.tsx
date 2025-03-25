@@ -15,11 +15,16 @@ import { useToast } from './ui/use-toast';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import { CheckCircle, Link, Search, Loader2, AlertCircle, Download, Sparkles, Plus } from 'lucide-react';
 import { Agent } from '../types';
-import { ScrapeService } from '../services/ScrapeService';
+import { 
+  ScrapeService, 
+  saveUserSubmittedProjects,
+  ScrapeServiceType
+} from '../services/ScrapeService';
 import { useAuth } from '../contexts/AuthContext';
 import { saveUserSearch } from '../services/firebase';
 import { motion } from 'framer-motion';
 import { GitHubService } from '../services/GitHubService';
+import { SupabaseService } from '../services/SupabaseService';
 
 interface BulkImportModalProps {
   onProjectsAdded?: (agents: Agent[]) => void;
@@ -111,32 +116,154 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
       console.log(`Searching with${tokenFromStorage ? '' : 'out'} GitHub token...`);
       
       // Always allow search to proceed, with or without token
-      const results = await ScrapeService.scrapeGitHubRepositories(searchQuery, isFirstImport);
+      const existingProjectsJson = localStorage.getItem('directory_projects');
+      let existingProjects: Agent[] = [];
+      
+      if (existingProjectsJson) {
+        try {
+          existingProjects = JSON.parse(existingProjectsJson);
+          if (!Array.isArray(existingProjects)) {
+            existingProjects = [];
+          }
+          console.log(`Found ${existingProjects.length} existing projects in localStorage`);
+        } catch (e) {
+          console.error('Error parsing localStorage projects:', e);
+        }
+      }
 
-      if (results.length > 0) {
-        const newRepositories = results.filter(repo => 
-          repo && repo.url && !existingProjectUrls?.includes(repo.url)
-        );
+      const existingProjectUrls = isFirstImport ? [] : existingProjects?.map(p => p.url) || [];
+      console.log(`Found ${existingProjectUrls.length} existing project URLs`);
+      
+      // Try GitHub API search first if token is available
+      const token = tokenFromStorage;
+      let repos: any[] = [];
 
-        setStatus(`Found ${results.length} repositories, ${newRepositories.length} are new.`);
-        setProgress(50);
+      try {
+        if (token) {
+          console.log('Searching GitHub with API token');
+          repos = await ScrapeService.searchWithGitHubAPI(searchQuery, token);
+          console.log(`GitHub API returned ${repos.length} results`);
+          
+          if (repos.length === 0) {
+            console.log('No results from GitHub API, falling back to direct search');
+            repos = await ScrapeService.searchGitHub(searchQuery);
+            console.log(`GitHub search returned ${repos.length} results`);
+          }
+        } else {
+          console.log('No GitHub token found, using direct search');
+          repos = await ScrapeService.searchGitHub(searchQuery);
+          console.log(`GitHub search returned ${repos.length} results`);
+        }
+      } catch (error) {
+        console.error('Error searching GitHub:', error);
+        repos = [];
+      }
 
+      let rawRepositories: Agent[] = [];
+      
+      // Use scrapeGitHubRepositories to filter for AI agents and MCP
+      if (repos.length > 0) {
+        console.log(`Searching for AI agent and MCP repositories from ${repos.length} results`);
+        setStatus(`Found ${repos.length} repositories. Filtering for AI Agents and MCP...`);
+        
+        try {
+          // Process the repos into Agent format and filter for AI/MCP
+          // First convert all repos to Agent format
+          const convertedRepos = repos
+            .map(repo => {
+              try {
+                return ScrapeService.convertToAgent(repo);
+              } catch (error) {
+                console.error('Error converting repo to Agent:', error);
+                return null;
+              }
+            })
+            .filter(agent => agent !== null && agent.url) as Agent[];
+          
+          console.log(`Converted ${convertedRepos.length} repositories to Agent format`);
+          
+          // Then filter for AI/MCP repositories
+          rawRepositories = convertedRepos.filter(repo => {
+            try {
+              // Check the raw repo object for AI/MCP related content
+              const repoObj = repos.find(r => r.html_url === repo.url || r.url === repo.url);
+              if (!repoObj) return false;
+              
+              return ScrapeService.isAIAgentRepository(repoObj) || ScrapeService.isMCPRepository(repoObj);
+            } catch (error) {
+              console.error('Error filtering repo:', error, repo);
+              // Include the repo anyway if we encounter an error
+              return true;
+            }
+          });
+          
+          console.log(`Found ${rawRepositories.length} AI Agent and MCP repositories after filtering`);
+        } catch (error) {
+          console.error('Error processing repositories:', error);
+          // Fallback to the original method on error
+          rawRepositories = await ScrapeService.scrapeGitHubRepositories(searchQuery, isFirstImport);
+          console.log(`Used fallback method due to error and found ${rawRepositories.length} repositories`);
+        }
+      } else {
+        // If no direct results, use the original scrapeGitHubRepositories method which has fallbacks
+        rawRepositories = await ScrapeService.scrapeGitHubRepositories(searchQuery, isFirstImport);
+        console.log(`Used fallback method and found ${rawRepositories.length} repositories`);
+      }
+      
+      if (rawRepositories.length > 0) {
         // Mark that we've done an import
         if (isFirstImport) {
           localStorage.setItem('has_imported_repos', 'true');
           setIsFirstImport(false);
         }
-
+        
+        // First remove internal duplicates
+        const dedupedRepositories = ScrapeService.removeDuplicates ? 
+          ScrapeService.removeDuplicates(rawRepositories) : 
+          rawRepositories.filter((v, i, a) => a.findIndex(t => t.url === v.url) === i);
+        console.log(`Removed ${rawRepositories.length - dedupedRepositories.length} internal duplicates`);
+        
+        // Then filter against existing projects
+        const newRepositories = ScrapeService.removeDuplicatesWithExisting(dedupedRepositories, existingProjects);
+        console.log(`Found ${newRepositories.length} new repositories after filtering out existing ones`);
+        
+        setStatus(`Found ${dedupedRepositories.length} repositories, ${newRepositories.length} are new.`);
+        setProgress(50);
+        
         // Process repositories in batches to avoid UI freezing
         const processedRepos: string[] = [];
-        const batchSize = 10;
+        const batchSize = 5; // Reduced batch size to avoid overwhelming Supabase
+        const supabaseService = SupabaseService.getInstance();
+        let savedToSupabase = 0;
+        let hasError = false;
         
-        for (let i = 0; i < newRepositories.length; i += batchSize) {
-          const batch = newRepositories.slice(i, i + batchSize);
-          
-          for (const repo of batch) {
-            if (repo) {
+        try {
+          for (let i = 0; i < newRepositories.length; i += batchSize) {
+            const batch = newRepositories.slice(i, i + batchSize);
+            
+            for (const repo of batch) {
+              if (!repo) continue;
+              
+              // Validate repository has required fields
+              if (!repo.url) {
+                console.warn(`Repository missing URL, skipping: ${repo.name || 'Unnamed'}`);
+                continue;
+              }
+              
               processedRepos.push(repo.url);
+              
+              // Save each repository directly to Supabase
+              try {
+                const savedSuccess = await supabaseService.addProject(repo);
+                if (savedSuccess) {
+                  savedToSupabase++;
+                  console.log(`Saved repository to Supabase: ${repo.name || 'Unnamed Repository'}`);
+                } else {
+                  console.warn(`Could not save repository to Supabase: ${repo.name || 'Unnamed Repository'}`);
+                }
+              } catch (error) {
+                console.error(`Error saving repository to Supabase: ${repo.name}`, error);
+              }
               
               // Update progress
               const currentProgress = 50 + Math.floor((processedRepos.length / newRepositories.length) * 50);
@@ -146,52 +273,76 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
               // Update displayed repositories immediately
               setImportedProjects([...processedRepos]);
             }
+            
+            // Add a small delay between batches to avoid rate limits
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
           
-          // Add a small delay between batches
-          await new Promise(resolve => setTimeout(resolve, 50));
-        }
-
-        setTotalFound(newRepositories.length);
-        setStatus(`Imported ${newRepositories.length} AI Agent and MCP repositories.`);
-        setProgress(100);
-
-        // Add the repositories to the results
-        setShowResults(true);
-        setSearchResults(newRepositories.map(repo => repo.url));
-        setImportedCount(newRepositories.length);
-
-        // If onProjectsAdded callback is provided, call it
-        if (onProjectsAdded && newRepositories.length > 0) {
-          onProjectsAdded(newRepositories);
-        }
-
-        // Save search to user's account if logged in
-        if (currentUser && newRepositories.length > 0) {
-          try {
-            await saveUserSearch(
-              currentUser.uid,
-              searchQuery,
-              newRepositories.map(repo => repo)
+          setTotalFound(newRepositories.length);
+          setStatus(`Imported ${newRepositories.length} repositories. Saved ${savedToSupabase} to Supabase database.`);
+          setProgress(100);
+          
+          // Add the repositories to the results
+          setShowResults(true);
+          setSearchResults(newRepositories.map(repo => repo.url));
+          setImportedCount(newRepositories.length);
+          
+          // If onProjectsAdded callback is provided, call it
+          if (onProjectsAdded && newRepositories.length > 0) {
+            onProjectsAdded(newRepositories);
+          }
+          
+          // Save search to user's account if logged in
+          if (currentUser && newRepositories.length > 0) {
+            try {
+              await saveUserSearch(
+                currentUser.uid,
+                searchQuery,
+                newRepositories.map(repo => repo)
+              );
+              
+              toast({
+                title: 'Search Saved',
+                description: 'Your search has been saved to your account.',
+              });
+            } catch (saveError) {
+              console.error('Error saving search:', saveError);
+              // Don't show error to user, just log it
+            }
+          }
+          
+          setShowSatisfactionQuery(true);
+          
+          // Success toast
+          toast({
+            title: 'Import Complete',
+            description: `Successfully imported ${newRepositories.length} repositories. Saved ${savedToSupabase} to Supabase database.`,
+          });
+        } catch (importError) {
+          console.error('Error during repository import process:', importError);
+          hasError = true;
+          
+          // Show error toast
+          toast({
+            title: 'Import Error',
+            description: 'There was an error during the import process. Some repositories may not have been saved.',
+            variant: 'destructive',
+          });
+          
+          // Still try to show whatever results we have
+          setShowResults(true);
+          setSearchResults(processedRepos);
+          setImportedCount(processedRepos.length);
+          setStatus(`Import interrupted. Saved ${savedToSupabase} repositories to Supabase.`);
+          
+          // If we have some repos, still call the callback
+          if (onProjectsAdded && processedRepos.length > 0) {
+            const successfulRepos = newRepositories.filter(repo => 
+              repo && repo.url && processedRepos.includes(repo.url)
             );
-            
-            toast({
-              title: 'Search Saved',
-              description: 'Your search has been saved to your account.',
-            });
-          } catch (saveError) {
-            console.error('Error saving search:', saveError);
-            // Don't show error to user, just log it
+            onProjectsAdded(successfulRepos);
           }
         }
-
-        setShowSatisfactionQuery(true);
-
-        // Success toast
-        toast({
-          title: 'Import Complete',
-          description: `Successfully imported ${newRepositories.length} AI Agent and MCP repositories.`,
-        });
       } else {
         // If no results with or without token, use fallback sample repos
         console.log('No repositories found, using fallback sample repositories');
@@ -199,28 +350,67 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
         const newSampleRepos = sampleRepos.filter(repo => 
           repo && repo.url && !existingProjectUrls?.includes(repo.url)
         );
+        
+        if (newSampleRepos.length > 0) {
+          // Also save these to Supabase
+          const supabaseService = SupabaseService.getInstance();
+          let savedToSupabase = 0;
+          
+          // Process and save sample repositories
+          for (const repo of newSampleRepos) {
+            try {
+              const savedSuccess = await supabaseService.addProject(repo);
+              if (savedSuccess) {
+                savedToSupabase++;
+                console.log(`Saved sample repository to Supabase: ${repo.name || 'Unnamed Repository'}`);
+              }
+            } catch (error) {
+              console.error(`Error saving sample repository to Supabase: ${repo.name}`, error);
+            }
+          }
+          
+          setTotalFound(newSampleRepos.length);
+          setStatus(`Imported ${newSampleRepos.length} sample repositories. Saved ${savedToSupabase} to Supabase database.`);
+          setProgress(100);
+          
+          // Add the repositories to the results
+          setShowResults(true);
+          setSearchResults(newSampleRepos.map(repo => repo.url));
+          setImportedCount(newSampleRepos.length);
+          
+          // If onProjectsAdded callback is provided, call it
+          if (onProjectsAdded) {
+            onProjectsAdded(newSampleRepos);
+          }
+          
+          // Success toast
+          toast({
+            title: 'Import Complete',
+            description: `Successfully imported ${newSampleRepos.length} sample repositories. Saved ${savedToSupabase} to Supabase database.`,
+          });
+        } else {
+          setImportedProjects([]);
+          setSearchResults([]);
+          setImportedCount(0);
+          setTotalFound(0);
+          setStatus(`No repositories found. Showing 0 sample AI agent repositories.`);
+          setShowResults(true);
 
-        setImportedProjects(newSampleRepos.map(repo => repo.url));
-        setSearchResults(newSampleRepos.map(repo => repo.url));
-        setImportedCount(newSampleRepos.length);
-        setTotalFound(newSampleRepos.length);
-        setStatus(`No repositories found. Showing ${newSampleRepos.length} sample AI agent repositories.`);
-        setShowResults(true);
+          // If onProjectsAdded callback is provided, call it with fallback repos
+          if (onProjectsAdded) {
+            onProjectsAdded([]);
+          }
 
-        // If onProjectsAdded callback is provided, call it with fallback repos
-        if (onProjectsAdded) {
-          onProjectsAdded(newSampleRepos);
-        }
+          toast({
+            title: 'Using Fallback Data',
+            description: `Loaded 0 sample AI Agent and MCP repositories as a fallback.`,
+          });
 
-        toast({
-          title: 'Using Fallback Data',
-          description: `Loaded ${newSampleRepos.length} sample AI Agent and MCP repositories as a fallback.`,
-        });
-
-        // Mark that we've done an import if this is the first one
-        if (isFirstImport) {
-          localStorage.setItem('has_imported_repos', 'true');
-          setIsFirstImport(false);
+          // Mark that we've done an import if this is the first one
+          if (isFirstImport) {
+            localStorage.setItem('has_imported_repos', 'true');
+            setIsFirstImport(false);
+          }
         }
       }
     } catch (error: any) {

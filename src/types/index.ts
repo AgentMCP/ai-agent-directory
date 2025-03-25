@@ -11,6 +11,7 @@ export interface Agent {
   updated: string;
   topics: string[];
   license: string;
+  tags?: string[];
   isLoading?: boolean;
 }
 

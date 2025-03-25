@@ -13,29 +13,11 @@ const loadUserSubmittedProjects = () => {
   return [];
 };
 
-// Function to remove duplicates from an array of projects
-const removeDuplicates = (projects: Agent[]): Agent[] => {
-  const uniqueProjects: Agent[] = [];
-  
-  for (const project of projects) {
-    if (!uniqueProjects.some(existingProject => 
-      (existingProject.url && project.url && existingProject.url.toLowerCase() === project.url.toLowerCase()) ||
-      (existingProject.name && project.name && existingProject.owner && project.owner && 
-       existingProject.name.toLowerCase() === project.name.toLowerCase() && 
-       existingProject.owner.toLowerCase() === project.owner.toLowerCase())
-    )) {
-      uniqueProjects.push(project);
-    }
-  }
-  
-  return uniqueProjects;
-};
-
 // Save projects to localStorage
 const saveUserSubmittedProjects = (projects: Agent[]) => {
   try {
     // Remove duplicates before saving
-    const uniqueProjects = removeDuplicates(projects);
+    const uniqueProjects = ScrapeService.removeDuplicates(projects);
     localStorage.setItem('userSubmittedProjects', JSON.stringify(uniqueProjects));
   } catch (error) {
     console.error('Error saving projects:', error);
@@ -89,6 +71,108 @@ CACHED_SEARCH_RESULTS = loadCachedSearchResults();
  */
 const ScrapeService = {
   /**
+   * Remove duplicates from an array of projects
+   */
+  removeDuplicates(projects: Agent[]): Agent[] {
+    const uniqueProjects: Agent[] = [];
+    const seenUrls = new Set<string>();
+    const seenOwnerRepos = new Set<string>();
+    
+    for (const project of projects) {
+      if (!project.url) continue;
+      
+      // Normalize URL for comparison
+      const normalizedUrl = project.url.toLowerCase().trim();
+      
+      // Create a unique key for owner/name combination if available
+      const ownerRepoKey = project.owner && project.name ? 
+        `${project.owner.toLowerCase()}-${project.name.toLowerCase()}` : null;
+      
+      // Check if we've seen this URL or owner/repo combination before
+      if (!seenUrls.has(normalizedUrl) && 
+          (!ownerRepoKey || !seenOwnerRepos.has(ownerRepoKey))) {
+        
+        // Add to our tracking sets
+        seenUrls.add(normalizedUrl);
+        if (ownerRepoKey) {
+          seenOwnerRepos.add(ownerRepoKey);
+        }
+        
+        // Add to unique projects
+        uniqueProjects.push(project);
+      } else {
+        console.log(`Removing duplicate project: ${project.name || 'Unnamed'} (${normalizedUrl})`);
+      }
+    }
+    
+    console.log(`Removed ${projects.length - uniqueProjects.length} duplicates from ${projects.length} projects`);
+    return uniqueProjects;
+  },
+
+  /**
+   * Get all existing projects from all sources
+   */
+  getAllExistingProjects(): Agent[] {
+    // Combine all sources of projects
+    const localStorageProjects = loadUserSubmittedProjects();
+    const cachedProjects: Agent[] = [];
+    
+    // Add all projects from the cache
+    CACHED_SEARCH_RESULTS.forEach(projects => {
+      cachedProjects.push(...projects);
+    });
+    
+    // Combine and remove duplicates
+    const combinedProjects = [...localStorageProjects, ...cachedProjects];
+    return this.removeDuplicates(combinedProjects);
+  },
+
+  /**
+   * Function to remove duplicates by comparing with existing projects
+   */
+  removeDuplicatesWithExisting(newProjects: Agent[], existingProjects?: Agent[]): Agent[] {
+    // Get existing projects if not provided
+    const existing = existingProjects || this.getAllExistingProjects();
+    
+    // Create sets for fast lookup
+    const existingUrls = new Set<string>();
+    const existingOwnerRepos = new Set<string>();
+    
+    // Populate sets with existing project identifiers
+    for (const project of existing) {
+      if (project.url) {
+        existingUrls.add(project.url.toLowerCase().trim());
+      }
+      
+      if (project.owner && project.name) {
+        existingOwnerRepos.add(`${project.owner.toLowerCase()}-${project.name.toLowerCase()}`);
+      }
+    }
+    
+    // Filter out duplicates
+    const uniqueProjects = newProjects.filter(project => {
+      if (!project.url) return false;
+      
+      const normalizedUrl = project.url.toLowerCase().trim();
+      const ownerRepoKey = project.owner && project.name ? 
+        `${project.owner.toLowerCase()}-${project.name.toLowerCase()}` : null;
+      
+      // Check if this project exists in our sets
+      const isDuplicate = existingUrls.has(normalizedUrl) || 
+        (ownerRepoKey && existingOwnerRepos.has(ownerRepoKey));
+      
+      if (isDuplicate) {
+        console.log(`Filtering out existing project: ${project.name || 'Unnamed'} (${normalizedUrl})`);
+      }
+      
+      return !isDuplicate;
+    });
+    
+    console.log(`Filtered out ${newProjects.length - uniqueProjects.length} existing projects from ${newProjects.length} projects`);
+    return uniqueProjects;
+  },
+  
+  /**
    * Scrape GitHub repositories for AI Agents and MCP tools
    * @param query Search query
    * @param isFirstImport Whether this is the first import (allows up to 250 repos)
@@ -101,7 +185,13 @@ const ScrapeService = {
     const cacheKey = query.toLowerCase().trim();
     if (CACHED_SEARCH_RESULTS.has(cacheKey)) {
       console.log(`Using cached results for query: ${query}`);
-      return CACHED_SEARCH_RESULTS.get(cacheKey) || [];
+      
+      // Even if we use cached results, we should filter against existing projects
+      const cachedResults = CACHED_SEARCH_RESULTS.get(cacheKey) || [];
+      const uniqueResults = this.removeDuplicatesWithExisting(cachedResults);
+      console.log(`Found ${uniqueResults.length} unique cached results after filtering against existing projects`);
+      
+      return uniqueResults;
     }
     
     const maxResults = isFirstImport ? 250 : 100;
@@ -129,145 +219,97 @@ const ScrapeService = {
         console.log('No GitHub token available, skipping API search');
       }
       
-      // Search terms related to AI Agents and MCP - more specific to ensure quality results
-      const searchTerms = [
-        'AI Agent Framework',
-        'Model Context Protocol',
-        'AI Agent Orchestration',
-        'LLM Agent Framework',
-        'Autonomous AI Agent',
-        'AI Assistant Framework',
-        'Agent Communication Protocol',
-        'MCP Framework',
-        'AI Agent System',
-        'Multi-Agent Framework',
-        'LLM Agent Orchestration',
-        'Agent Interoperability',
-        'Model Context Handling',
-        'AI Agent Communication'
-      ];
-      
-      let allRepositories: any[] = [];
-      let uniqueRepos = new Map<string, any>();
-      
-      // First try to search with the provided query
-      console.log(`Searching for: ${query}`);
-      
-      // Set a timeout for the entire search process
-      const searchTimeout = 30000; // 30 seconds
-      const searchPromise = (async () => {
-        try {
-          // Search with the main query first
-          const mainResults = await this.searchGitHub(query);
-          
-          for (const repo of mainResults) {
-            // Extra check to ensure only English content is included
-            if (this.isEnglishContent(repo.name) && this.isEnglishContent(repo.description)) {
-              if (!uniqueRepos.has(repo.url)) {
-                uniqueRepos.set(repo.url, repo);
-              }
-            }
-          }
-          
-          // Search with additional terms to find more repositories
-          // Only perform additional searches if we don't have enough results
-          if (uniqueRepos.size < maxResults) {
-            for (const term of searchTerms) {
-              // Skip if we already have enough repositories
-              if (uniqueRepos.size >= maxResults) break;
-              
-              console.log(`Searching for: ${term}`);
-              const results = await this.searchGitHub(term);
-              
-              for (const repo of results) {
-                // Extra check to ensure only English content is included
-                if (this.isEnglishContent(repo.name) && this.isEnglishContent(repo.description)) {
-                  if (!uniqueRepos.has(repo.url) && uniqueRepos.size < maxResults) {
-                    uniqueRepos.set(repo.url, repo);
-                  }
-                }
-              }
-            }
-          }
-          
-          allRepositories = Array.from(uniqueRepos.values());
-          
-        } catch (error) {
-          console.error('Error in search process:', error);
-          throw error;
-        }
-      })();
-      
-      // Race the search process against a timeout
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Search timeout exceeded')), searchTimeout);
-      });
-      
-      await Promise.race([searchPromise, timeoutPromise]);
-      
-      console.log(`Found ${allRepositories.length} repositories before validation`);
-      
-      // Enhanced validation - ensure repositories are in English and contain specific agent-related terms
-      const repositories = allRepositories.filter(repo => {
-        // First check if it's an English repository
-        if (!this.isEnglishContent(repo.name)) {
-          return false;
-        }
-        
-        // Relaxed validation: Check if it's potentially related to AI Agents or MCP
-        // We'll consider a repo valid if it has a reasonable description and topic matches
-        const hasDescription = repo.description && repo.description.length > 10;
-        const isAgentOrMcp = hasDescription && (
-          this.isAIAgentRepository(repo) || 
-          this.isMCPRepository(repo) ||
-          (repo.name && (
-            repo.name.toLowerCase().includes('agent') || 
-            repo.name.toLowerCase().includes('ai') ||
-            repo.name.toLowerCase().includes('mcp')
-          ))
-        );
-        
-        // Relaxed quality filters - allow more repositories to be imported
-        return isAgentOrMcp;
-      });
-      
-      // Convert to Agent objects
-      const validRepositories = repositories
-        .slice(0, maxResults)
-        .map(repo => this.convertToAgent(repo));
-      
-      console.log(`Validated ${validRepositories.length} repositories as AI Agents or MCP tools`);
-      
-      // Get all existing projects to check for duplicates
-      const existingProjects = this.getAllExistingProjects();
-      
-      // Filter out duplicates
-      const uniqueRepositories = validRepositories.filter(newRepo => {
-        // Check if this repository URL already exists in any project
-        return !existingProjects.some(existingRepo => 
-          (existingRepo.url && newRepo.url && existingRepo.url.toLowerCase() === newRepo.url.toLowerCase()) ||
-          (existingRepo.name && newRepo.name && existingRepo.owner && newRepo.owner && 
-           existingRepo.name.toLowerCase() === newRepo.name.toLowerCase() && 
-           existingRepo.owner.toLowerCase() === newRepo.owner.toLowerCase())
-        );
-      });
-      
-      console.log(`Found ${uniqueRepositories.length} unique repositories after filtering duplicates`);
-      
-      // Cache results
-      CACHED_SEARCH_RESULTS.set(cacheKey, uniqueRepositories);
-      saveCachedSearchResults(CACHED_SEARCH_RESULTS);
-      
-      // Save to localStorage
-      if (uniqueRepositories.length > 0) {
-        USER_SUBMITTED_PROJECTS = [...USER_SUBMITTED_PROJECTS, ...uniqueRepositories];
-        saveUserSubmittedProjects(USER_SUBMITTED_PROJECTS);
+      // If no token is available, return empty results
+      if (!githubToken) {
+        console.log('No GitHub token available for API search, using fallback data');
+        return this.generateSimulatedResults(query);
       }
       
-      return uniqueRepositories;
+      console.log('Using GitHub token for API search');
+      const searchResults = [];
+      
+      // Try GitHub API with fetch
+      try {
+        // GitHub search API (if token is available)
+        const headers: Record<string, string> = {
+          'Accept': 'application/vnd.github.v3+json'
+        };
+        
+        if (githubToken) {
+          // Try with proper GitHub token format - no 'token' or 'Bearer' prefix as it might vary
+          headers['Authorization'] = githubToken.startsWith('ghp_') ? `token ${githubToken}` : 
+                                    (githubToken.startsWith('github_pat_') ? `token ${githubToken}` : githubToken);
+          
+          console.log('Using Authorization header:', 
+                     headers['Authorization'].substring(0, 10) + '...' + 
+                     headers['Authorization'].substring(headers['Authorization'].length - 5));
+        }
+        
+        // Use GitHub search API to find repositories
+        const searchTerms = query.split(' ').filter(term => term.length > 2);
+        const queryString = searchTerms.join('+');
+        
+        // Add language filter to the query to prioritize English content
+        // We'll search for a high number of results (up to 100 per page)
+        // Remove strict language filters to get more results
+        const apiUrl = `https://api.github.com/search/repositories?q=${queryString}+in:name,description,readme&sort=stars&order=desc&per_page=100`;
+        
+        // First check if the fetch will succeed (CORS check)
+        try {
+          console.log(`Fetching from GitHub API: ${apiUrl}`);
+          const response = await fetch(apiUrl, { 
+            method: 'GET',
+            headers,
+            mode: 'cors'
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            console.log(`GitHub API returned ${data?.items?.length || 0} results`);
+            
+            if (data && data.items) {
+              for (const item of data.items) {
+                // Add all items, we'll filter later
+                searchResults.push({
+                  url: item.html_url,
+                  name: item.name,
+                  description: item.description || '',
+                  owner: item.owner.login,
+                  stars: item.stargazers_count,
+                  forks: item.forks_count,
+                  topics: item.topics || [],
+                  language: item.language,
+                  license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
+                  updated: item.updated_at
+                });
+              }
+            }
+          } else {
+            console.error(`GitHub API returned status ${response.status}`);
+            // If we get a 401 error, the token might be invalid
+            if (response.status === 401 && githubToken) {
+              console.error('GitHub token appears to be invalid');
+              // Don't clear the token automatically - let the user manage it
+              // localStorage.removeItem('github_token');
+            }
+            throw new Error(`GitHub API returned ${response.status}: ${response.statusText}`);
+          }
+        } catch (error) {
+          console.error('Error searching GitHub API:', error);
+          // Fallback to simulated results if API fails
+          console.log('Falling back to simulated results');
+          const simulatedResults = this.generateSimulatedResults(query);
+          searchResults.push(...simulatedResults);
+        }
+        
+        return searchResults;
+      } catch (error) {
+        console.error('Error in GitHub search:', error);
+        return this.generateSimulatedResults(query);
+      }
     } catch (error) {
-      console.error('Error scraping GitHub repositories:', error);
-      return this.getFallbackRepositories(isFirstImport);
+      console.error('Error in GitHub search:', error);
+      return this.generateSimulatedResults(query);
     }
   },
   
@@ -981,30 +1023,6 @@ const ScrapeService = {
   },
   
   /**
-   * Get all existing projects from all sources
-   */
-  getAllExistingProjects(): Agent[] {
-    // Get projects from localStorage
-    let localStorageProjects: Agent[] = [];
-    try {
-      const savedProjects = localStorage.getItem('userSubmittedProjects');
-      if (savedProjects) {
-        localStorageProjects = JSON.parse(savedProjects);
-      }
-    } catch (error) {
-      console.error('Error loading saved projects from localStorage:', error);
-    }
-    
-    // We can't use GitHubService directly here since it's async
-    // Instead, just combine the local projects with the in-memory ones
-    // The actual data will be properly merged when added to Supabase
-    
-    // Combine all projects and remove duplicates
-    const allProjects = [...USER_SUBMITTED_PROJECTS, ...localStorageProjects];
-    return removeDuplicates(allProjects);
-  },
-  
-  /**
    * Add a project from a GitHub URL
    */
   async addProjectFromGitHub(url: string) {
@@ -1155,4 +1173,7 @@ const ScrapeService = {
   },
 };
 
-export { ScrapeService };
+export { ScrapeService, loadUserSubmittedProjects, saveUserSubmittedProjects };
+
+// TypeScript type for ScrapeService
+export type ScrapeServiceType = typeof ScrapeService;

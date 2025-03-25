@@ -354,75 +354,86 @@ export class SupabaseService {
    * Add a single project to the database
    */
   public async addProject(project: Agent): Promise<boolean> {
-    console.log('Adding project to Supabase:', project.url);
-    
     try {
-      // Normalize the URL for consistent comparison
-      if (project.url) {
-        project.url = project.url.toLowerCase().trim();
-      }
-      
-      // First check if this URL already exists in our database
-      const existingProjects = await this.getAllProjects();
-      const isDuplicate = existingProjects.some(p => 
-        p.url && project.url && p.url.toLowerCase() === project.url.toLowerCase()
-      );
-      
-      if (isDuplicate) {
-        console.warn(`Project with URL ${project.url} already exists in the database`);
+      // Validate the required fields
+      if (!project.url || !project.name) {
+        console.error('Project is missing required fields:', project);
         return false;
       }
       
-      // Try Supabase first if available
-      if (this.isSupabaseAvailable) {
-        try {
-          // Double-check if project already exists by URL
-          const { data, error: checkError } = await supabase
-            .from(PROJECTS_TABLE)
-            .select('id')
-            .ilike('url', project.url)
-            .limit(1);
-            
-          if (checkError) {
-            console.warn('Error checking for existing project in Supabase:', checkError.message);
-          } else if (data && data.length > 0) {
-            console.log('Project already exists in Supabase');
+      // Check if duplicate by direct URL comparison (exact match)
+      const { data: exactUrlMatch, error: checkError } = await supabase
+        .from(PROJECTS_TABLE)
+        .select('id, url')
+        .eq('url', project.url)
+        .limit(1);
+      
+      if (checkError) {
+        console.error('Error checking for duplicate:', checkError);
+        return false;
+      }
+      
+      // If exact URL match found, don't add
+      if (exactUrlMatch && exactUrlMatch.length > 0) {
+        console.log(`Project already exists with exact URL: ${project.url}`);
+        return false;
+      }
+      
+      // Check for case-insensitive URL matches
+      const normalizedUrl = project.url.toLowerCase().trim();
+      const { data: caseInsensitiveMatches, error: caseError } = await supabase
+        .from(PROJECTS_TABLE)
+        .select('id, url')
+        .ilike('url', `%${normalizedUrl.replace(/^https?:\/\/(www\.)?/i, '')}%`) // Match URL without protocol and www
+        .limit(5);
+        
+      if (caseError) {
+        console.error('Error checking for case-insensitive match:', caseError);
+        // Continue anyway
+      } else if (caseInsensitiveMatches && caseInsensitiveMatches.length > 0) {
+        // Check if any of the returned URLs match the normalized URL
+        for (const match of caseInsensitiveMatches) {
+          const matchNormalized = match.url.toLowerCase().trim();
+          if (matchNormalized === normalizedUrl || 
+              matchNormalized.replace(/^https?:\/\/(www\.)?/i, '') === normalizedUrl.replace(/^https?:\/\/(www\.)?/i, '')) {
+            console.log(`Project already exists with similar URL: ${project.url} (matched ${match.url})`);
             return false;
           }
-          
-          // Insert the new project
-          const { error: insertError } = await supabase
-            .from(PROJECTS_TABLE)
-            .insert([project]);
-            
-          if (insertError) {
-            console.warn('Error inserting project into Supabase:', insertError.message);
-            
-            // If Supabase gives a unique violation error, it's a duplicate
-            if (insertError.code === '23505') { // Postgres unique violation code
-              console.log('Duplicate detected by Supabase constraint');
-              return false;
-            }
-          } else {
-            console.log('Successfully added project to Supabase');
-            
-            // Also update localStorage
-            this.addProjectToLocalStorage(project);
-            
-            // Trigger a storage event to notify other components
-            localStorage.setItem('project_added_timestamp', Date.now().toString());
-            
-            return true;
-          }
-        } catch (error) {
-          console.warn('Error in Supabase addProject:', error);
         }
       }
       
-      // Fallback to localStorage
-      return this.addProjectToLocalStorage(project);
+      // If no duplicates found, add the project
+      const { data, error } = await supabase
+        .from(PROJECTS_TABLE)
+        .insert([
+          {
+            url: project.url,
+            name: project.name,
+            description: project.description || '',
+            owner: project.owner || '',
+            stars: project.stars || 0,
+            forks: project.forks || 0,
+            topics: project.topics || [],
+            language: project.language || 'Unknown',
+            license: project.license || 'Unknown',
+            updated: project.updated || new Date().toISOString(),
+            tags: project.tags || []
+          }
+        ]);
+      
+      if (error) {
+        console.error('Error adding project:', error);
+        // Try to provide more detailed error message
+        if (error.message && error.message.includes('duplicate')) {
+          console.error('Duplicate detection failed but database reports duplicate constraint');
+        }
+        return false;
+      }
+      
+      console.log(`Successfully added project: ${project.name}`);
+      return true;
     } catch (error) {
-      console.error('Error in project addition process:', error);
+      console.error('Exception in addProject:', error);
       return false;
     }
   }

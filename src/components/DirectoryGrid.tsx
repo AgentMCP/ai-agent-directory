@@ -13,7 +13,9 @@ import {
   SlidersHorizontal,
   X,
   Plus,
-  Github
+  Github,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import BulkImportModal from './BulkImportModal';
@@ -31,6 +33,11 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
   const [filteredAgents, setFilteredAgents] = useState<Agent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const pageSizeOptions = [25, 50, 100];
   
   // Filter states
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
@@ -173,6 +180,8 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
   useEffect(() => {
     console.log('DirectoryGrid: Filter options changed, applying filters');
     applyFilters();
+    // Reset to first page when filters change
+    setCurrentPage(1);
   }, [filterOptions, agents]);
   
   const applyFilters = () => {
@@ -388,6 +397,70 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
     }
   };
   
+  // Get paginated data
+  const paginatedAgents = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    return filteredAgents.slice(startIndex, endIndex);
+  }, [filteredAgents, currentPage, pageSize]);
+  
+  // Calculate total pages
+  const totalPages = useMemo(() => {
+    return Math.ceil(filteredAgents.length / pageSize);
+  }, [filteredAgents, pageSize]);
+  
+  // Generate page numbers for pagination
+  const getPageNumbers = () => {
+    const pageNumbers = [];
+    
+    // Always show first page
+    pageNumbers.push(1);
+    
+    // Add ellipsis after first page if there's a gap
+    if (currentPage > 3) {
+      pageNumbers.push(-1); // Use -1 as a marker for ellipsis
+    }
+    
+    // Current page and immediate neighbors
+    for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
+      if (i > 1 && i < totalPages) {
+        pageNumbers.push(i);
+      }
+    }
+    
+    // Add ellipsis before last page if there's a gap
+    if (currentPage < totalPages - 2) {
+      pageNumbers.push(-2); // Use -2 as another marker for ellipsis
+    }
+    
+    // Always show last page if there is more than one page
+    if (totalPages > 1) {
+      pageNumbers.push(totalPages);
+    }
+    
+    // Remove duplicates
+    return [...new Set(pageNumbers)];
+  };
+  
+  // Handle page changes
+  const handlePageChange = (page: number) => {
+    // Ensure page is within valid range
+    const validPage = Math.max(1, Math.min(page, totalPages));
+    setCurrentPage(validPage);
+    
+    // Scroll to top of directory when changing pages
+    window.scrollTo({
+      top: document.getElementById('directory')?.offsetTop || 0,
+      behavior: 'smooth'
+    });
+  };
+  
+  // Handle page size changes
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(size);
+    setCurrentPage(1); // Reset to first page when changing page size
+  };
+  
   return (
     <div id="directory" className="w-full relative">
       <div className="bg-gradient-to-r from-[#0c0e20] to-[#161a36] backdrop-blur-md border-b border-white/10 p-4 flex flex-col md:flex-row md:items-center gap-y-4 justify-between">
@@ -402,7 +475,7 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
           <div>
             <h2 className="font-semibold text-white text-lg">AI Agent Directory</h2>
             <div className="text-xs text-white/60 font-medium">
-              Showing <span className="text-indigo-400 font-semibold">{filteredAgents.length}</span> of <span className="text-indigo-400 font-semibold">{agents.length}</span> total projects
+              Showing <span className="text-indigo-400 font-semibold">{paginatedAgents.length}</span> of <span className="text-indigo-400 font-semibold">{agents.length}</span> total projects
             </div>
           </div>
         </div>
@@ -412,7 +485,7 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
             <select
               value={filterOptions.sort}
               onChange={(e) => handleFilterChange({ sort: e.target.value as SortOption })}
-              className="h-8 rounded-md bg-transparent text-white border-none text-sm focus:ring-1 focus:ring-indigo-400 focus:outline-none px-3 py-0 cursor-pointer"
+              className="h-8 rounded-md bg-transparent text-white border-none text-sm focus:ring-1 focus:ring-indigo-400 focus:outline-none px-3 py-1 cursor-pointer"
             >
               <option value="stars">Most Stars</option>
               <option value="forks">Most Forks</option>
@@ -428,10 +501,10 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
                 size="sm"
                 onClick={() => setShowAddForm(true)}
                 disabled={isLoading || isRefreshing}
-                className="transition-all duration-200 shadow-sm hover:shadow-md px-3 relative bg-gradient-to-r from-indigo-600 to-violet-600"
+                className="transition-all duration-200 shadow-sm hover:shadow-md relative bg-gradient-to-r from-indigo-600 to-violet-600"
               >
-                <Plus className="h-3.5 w-3.5 mr-1.5" />
-                <span className="font-medium">Add Project</span>
+                <Plus className="h-4 w-4" />
+                <span className="sr-only">Add Project</span>
               </Button>
               
               <Button
@@ -439,9 +512,9 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
                 size="sm"
                 onClick={() => setShowBulkImport(true)}
                 disabled={isLoading || isRefreshing}
-                className="relative px-3 transition-all duration-200 shadow-sm hover:shadow-md"
+                className="relative shadow-sm hover:shadow-md"
               >
-                <Plus className="h-3.5 w-3.5 mr-1" />
+                <Plus className="h-4 w-4 mr-1" />
                 <span className="sr-only">Bulk Import</span>
                 Bulk
               </Button>
@@ -466,7 +539,7 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
                 size="sm"
                 onClick={() => setShowFilters(!showFilters)}
                 disabled={isLoading || isRefreshing}
-                className={`relative px-3 transition-all duration-200 shadow-sm hover:shadow-md ${showFilters ? 'bg-indigo-500 border-indigo-400' : ''}`}
+                className={`relative shadow-sm hover:shadow-md ${showFilters ? 'bg-indigo-500 border-indigo-400' : ''}`}
               >
                 <SlidersHorizontal className="h-4 w-4" />
                 <span className="sr-only">Filters</span>
@@ -480,7 +553,7 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
                 size="sm"
                 onClick={() => setShowTokenInput(!showTokenInput)}
                 disabled={isLoading || isRefreshing}
-                className="relative px-3 transition-all duration-200 shadow-sm hover:shadow-md"
+                className="relative shadow-sm hover:shadow-md"
               >
                 <Github className="h-4 w-4" />
                 <span className="sr-only">GitHub Token</span>
@@ -526,7 +599,7 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
             <div className="w-full md:w-40">
               <label className="block text-xs font-medium text-white/60 mb-1.5">Language</label>
               <select 
-                className="w-full h-9 rounded-md border border-white/20 bg-white/5 px-3 py-1 text-sm text-white focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 focus:outline-none transition-all duration-200"
+                className="w-full h-9 rounded-md border border-white/20 bg-white/5 px-3 py-1 text-sm text-white focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 focus:outline-none cursor-pointer"
                 value={filterOptions.language || ''}
                 onChange={(e) => handleFilterChange({ language: e.target.value || '' })}
               >
@@ -540,7 +613,7 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
             <div className="w-full md:w-40">
               <label className="block text-xs font-medium text-white/60 mb-1.5">License</label>
               <select 
-                className="w-full h-9 rounded-md border border-white/20 bg-white/5 px-3 py-1 text-sm text-white focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 focus:outline-none transition-all duration-200"
+                className="w-full h-9 rounded-md border border-white/20 bg-white/5 px-3 py-1 text-sm text-white focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 focus:outline-none cursor-pointer"
                 value={filterOptions.license || ''}
                 onChange={(e) => handleFilterChange({ license: e.target.value || '' })}
               >
@@ -646,7 +719,7 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mb-4"></div>
           <p className="text-lg">Loading directory...</p>
         </div>
-      ) : filteredAgents.length === 0 ? (
+      ) : paginatedAgents.length === 0 ? (
         <div className="flex flex-col items-center justify-center min-h-[300px] text-center">
           <p className="text-lg mb-2">No projects found</p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
@@ -655,7 +728,8 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
           <div className="flex gap-2">
             <Button onClick={() => setShowAddForm(true)}>
               <Plus className="h-4 w-4 mr-1" />
-              Add Project
+              <span className="sr-only">Add Project</span>
+              Add
             </Button>
             <Button variant="outline" onClick={() => setShowBulkImport(true)}>
               Import from GitHub
@@ -663,10 +737,69 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredAgents.map((agent, index) => (
-            <AgentCard key={`${agent.url}-${index}`} agent={agent} />
-          ))}
+        <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {paginatedAgents.map((agent, index) => (
+              <AgentCard key={`${agent.url}-${index}`} agent={agent} />
+            ))}
+          </div>
+          <div className="flex justify-between items-center mt-8 mb-4">
+            {/* Pagination Controls */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="dark"
+                size="sm"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="shadow-sm hover:shadow-md"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                <span className="sr-only">Previous Page</span>
+              </Button>
+              
+              {getPageNumbers().map(page => (
+                page === -1 || page === -2 ? (
+                  <span key={page} className="text-white/60 px-1">...</span>
+                ) : (
+                  <Button
+                    key={page}
+                    variant="dark"
+                    size="sm"
+                    onClick={() => handlePageChange(page)}
+                    disabled={currentPage === page}
+                    className={`shadow-sm hover:shadow-md ${currentPage === page ? 'bg-indigo-500 border-indigo-400' : ''}`}
+                  >
+                    {page}
+                  </Button>
+                )
+              ))}
+              
+              <Button
+                variant="dark"
+                size="sm"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="shadow-sm hover:shadow-md"
+              >
+                <ChevronRight className="h-4 w-4" />
+                <span className="sr-only">Next Page</span>
+              </Button>
+            </div>
+            
+            {/* Page Size Selector */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-white/60">Show:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => handlePageSizeChange(parseInt(e.target.value))}
+                className="h-8 rounded-md border border-white/20 bg-white/5 text-white text-sm focus:ring-1 focus:ring-indigo-400 focus:outline-none px-3 py-1 cursor-pointer"
+              >
+                {pageSizeOptions.map(size => (
+                  <option key={size} value={size}>{size}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
       )}
     </div>
