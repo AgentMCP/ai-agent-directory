@@ -13,6 +13,7 @@ export interface Agent {
   license: string;
   tags?: string[];
   isLoading?: boolean;
+  isTest?: boolean;
 }
 
 export type SortOption = 'stars' | 'updated' | 'forks';

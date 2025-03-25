@@ -230,14 +230,11 @@ const ScrapeService = {
    * @returns List of validated repositories
    */
   async scrapeGitHubRepositories(query = 'AI Agent MCP', isFirstImport = false): Promise<Agent[]> {
-    console.log(`Scraping GitHub repositories for: ${query}, first import: ${isFirstImport}`);
-    
-    // Check if we have cached results for this query
+    // Check cached results first
     const cacheKey = query.toLowerCase().trim();
-    if (CACHED_SEARCH_RESULTS.has(cacheKey)) {
-      console.log(`Using cached results for query: ${query}`);
+    if (CACHED_SEARCH_RESULTS.has(cacheKey) && !isFirstImport) {
+      console.log(`Using cached results for "${cacheKey}"`);
       
-      // Even if we use cached results, we should filter against existing projects
       const cachedResults = CACHED_SEARCH_RESULTS.get(cacheKey) || [];
       const uniqueResults = this.removeDuplicatesWithExisting(cachedResults);
       console.log(`Found ${uniqueResults.length} unique cached results after filtering against existing projects`);
@@ -259,6 +256,12 @@ const ScrapeService = {
           const apiResults = await this.searchWithGitHubAPI(query, githubToken);
           if (apiResults && apiResults.length > 0) {
             console.log(`GitHub API search successful: ${apiResults.length} results`);
+            
+            // Cache the API results for future use
+            CACHED_SEARCH_RESULTS.set(cacheKey, apiResults);
+            
+            // Log that we're using API results
+            console.log('Using GitHub API results - these should be real repositories');
             return apiResults;
           }
           console.log('GitHub API search returned no results, falling back');
@@ -270,92 +273,18 @@ const ScrapeService = {
         console.log('No GitHub token available, skipping API search');
       }
       
-      // If no token is available, return empty results
-      if (!githubToken) {
-        console.log('No GitHub token available for API search, using fallback data');
-        return this.generateSimulatedResults(query);
-      }
+      // If API search failed or no token is available, generate simulated results
+      console.log('Using fallback data since API search failed or was unavailable');
+      const fallbackResults = this.generateSimulatedResults(query);
       
-      console.log('Using GitHub token for API search');
-      const searchResults = [];
+      // Cache these results too
+      CACHED_SEARCH_RESULTS.set(cacheKey, fallbackResults);
       
-      // Try GitHub API with fetch
-      try {
-        // GitHub search API (if token is available)
-        const headers: Record<string, string> = {
-          'Accept': 'application/vnd.github.v3+json'
-        };
-        
-        if (githubToken) {
-          // Try with proper GitHub token format - no 'token' or 'Bearer' prefix as it might vary
-          headers['Authorization'] = githubToken.startsWith('ghp_') ? `token ${githubToken}` : 
-                                    (githubToken.startsWith('github_pat_') ? `token ${githubToken}` : githubToken);
-        }
-        
-        // Use GitHub search API to find repositories
-        const searchTerms = query.split(' ').filter(term => term.length > 2);
-        const queryString = searchTerms.join('+');
-        
-        // Add language filter to the query to prioritize English content
-        // We'll search for a high number of results (up to 100 per page)
-        // Remove strict language filters to get more results
-        const apiUrl = `https://api.github.com/search/repositories?q=${queryString}+in:name,description,readme&sort=stars&order=desc&per_page=100`;
-        
-        // First check if the fetch will succeed (CORS check)
-        try {
-          console.log(`Fetching from GitHub API: ${apiUrl}`);
-          const response = await fetch(apiUrl, { 
-            method: 'GET',
-            headers,
-            mode: 'cors'
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            console.log(`GitHub API returned ${data?.items?.length || 0} results`);
-            
-            if (data && data.items) {
-              for (const item of data.items) {
-                // Add all items, we'll filter later
-                searchResults.push({
-                  url: item.html_url,
-                  name: item.name,
-                  description: item.description || '',
-                  owner: item.owner.login,
-                  stars: item.stargazers_count,
-                  forks: item.forks_count,
-                  topics: item.topics || [],
-                  language: item.language,
-                  license: item.license ? (item.license.spdx_id || item.license.name || 'Unknown') : 'Unknown',
-                  updated: item.updated_at
-                });
-              }
-            }
-          } else {
-            console.error(`GitHub API returned status ${response.status}`);
-            // If we get a 401 error, the token might be invalid
-            if (response.status === 401 && githubToken) {
-              console.error('GitHub token appears to be invalid');
-              // Don't clear the token automatically - let the user manage it
-              // localStorage.removeItem('github_token');
-            }
-            throw new Error(`GitHub API returned ${response.status}: ${response.statusText}`);
-          }
-        } catch (error) {
-          console.error('Error searching GitHub API:', error);
-          // Fallback to simulated results if API fails
-          console.log('Falling back to simulated results');
-          const simulatedResults = this.generateSimulatedResults(query);
-          searchResults.push(...simulatedResults);
-        }
-        
-        return searchResults;
-      } catch (error) {
-        console.error('Error in GitHub search:', error);
-        return this.generateSimulatedResults(query);
-      }
+      return fallbackResults;
     } catch (error) {
-      console.error('Error in GitHub search:', error);
+      console.error('Error scraping GitHub repositories:', error);
+      
+      // Return simulated results as fallback
       return this.generateSimulatedResults(query);
     }
   },

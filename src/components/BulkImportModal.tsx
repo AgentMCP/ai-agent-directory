@@ -231,10 +231,22 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
               if (!repo) continue;
               
               // Validate repository has required fields
-              if (!repo.url) {
-                console.warn(`Repository missing URL, skipping: ${repo.name || 'Unnamed'}`);
+              if (typeof repo === 'string') {
+                console.warn('Repository is a string, expected an Agent object. Skipping:', repo);
                 continue;
               }
+              
+              if (!repo.url || !repo.name) {
+                console.warn(`Repository missing required fields, skipping:`, repo);
+                continue;
+              }
+              
+              console.log('Attempting to save repository to Supabase:', {
+                url: repo.url,
+                name: repo.name,
+                owner: repo.owner || 'Unknown',
+                description: repo.description?.substring(0, 20) + '...' || 'No description'
+              });
               
               processedRepos.push(repo.url);
               
@@ -345,13 +357,36 @@ const BulkImportModal = ({ onProjectsAdded, existingProjectUrls = [], onClose, i
           // Process and save sample repositories
           for (const repo of newSampleRepos) {
             try {
-              const savedSuccess = await supabaseService.addProject(repo);
-              if (savedSuccess) {
-                savedToSupabase++;
-                console.log(`Saved sample repository to Supabase: ${repo.name || 'Unnamed Repository'}`);
+              // If the repository is just a URL string, skip it
+              if (typeof repo === 'string') {
+                console.warn('Repository is a string, expected an Agent object. Skipping:', repo);
+                continue;
+              }
+              
+              // Ensure repo has the required properties
+              if (!repo.url || !repo.name) {
+                console.warn(`Repository missing required fields, skipping:`, repo);
+                continue;
+              }
+              
+              console.log('Attempting to save repository to Supabase:', {
+                url: repo.url,
+                name: repo.name,
+                owner: repo.owner || 'Unknown',
+                description: repo.description?.substring(0, 20) + '...' || 'No description'
+              });
+              
+              try {
+                const savedSuccess = await supabaseService.addProject(repo);
+                if (savedSuccess) {
+                  savedToSupabase++;
+                  console.log(`Saved sample repository to Supabase: ${repo.name || 'Unnamed Repository'}`);
+                }
+              } catch (error) {
+                console.error(`Error saving sample repository to Supabase: ${repo.name}`, error);
               }
             } catch (error) {
-              console.error(`Error saving sample repository to Supabase: ${repo.name}`, error);
+              console.error('Error processing sample repository:', error);
             }
           }
           

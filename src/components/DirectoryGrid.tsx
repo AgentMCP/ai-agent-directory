@@ -58,6 +58,9 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [githubToken, setGithubToken] = useState<string>('');
   
+  // Total project count state
+  const [totalProjectCount, setTotalProjectCount] = useState<number | null>(null);
+  
   // Load the GitHub token from localStorage if present
   useEffect(() => {
     const savedToken = localStorage.getItem('github_token') || '';
@@ -158,29 +161,21 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
         }
       }
       
-      // Set agents regardless of whether they're empty
+      // Set the cleaned data as our agents
+      console.log(`DirectoryGrid: ${uniqueProjects.length} unique agents loaded`);
       setAgents(uniqueProjects);
-      setFilteredAgents(uniqueProjects);
       
-      // Only show a toast if we actually have data
-      if (uniqueProjects.length > 0) {
-        toast({
-          title: "Data Loaded",
-          description: `Successfully loaded ${uniqueProjects.length} projects from database.`,
-        });
-      } else {
-        // If Supabase returned empty data, let user know database is empty
-        toast({
-          title: "Database Empty",
-          description: "The Supabase database is empty. You can add projects to populate it.",
-        });
-      }
-    } catch (err) {
-      console.error('DirectoryGrid: Error fetching agents:', err);
+      // Also update the total project count
+      await getProjectCount();
+      
+    } catch (error: any) {
+      console.error('DirectoryGrid: Error fetching agents:', error);
+      setError(error.message || 'Failed to load projects');
+      
       toast({
-        title: "Error Loading Data",
-        description: "Failed to fetch data from database. See console for details.",
-        variant: "destructive"
+        title: 'Error Loading Projects',
+        description: 'There was a problem loading the projects. Please try again.',
+        variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
@@ -374,67 +369,53 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
   
   const handleAddRepository = async (url: string) => {
     setIsSubmitting(true);
-    setError(null);
-    
     try {
-      // First check if this repository is already in our directory
-      const isDuplicate = agents.some(agent => 
-        agent.url && agent.url.toLowerCase() === url.toLowerCase().trim()
-      );
+      console.log(`DirectoryGrid: Adding repository from URL: ${url}`);
       
-      if (isDuplicate) {
+      // Check if already exists in current state to provide fast feedback
+      const normalizedUrl = url.toLowerCase().trim();
+      if (agents.some(agent => agent.url?.toLowerCase().trim() === normalizedUrl)) {
         toast({
-          title: 'Duplicate Repository',
-          description: 'This repository already exists in the directory.',
-          variant: 'destructive',
+          title: "Repository Already Exists",
+          description: "This repository is already in the directory.",
+          variant: "destructive"
         });
         setIsSubmitting(false);
+        setShowAddForm(false);
         return;
       }
       
-      // If not a duplicate, proceed with adding
-      const result = await GitHubService.addProject(url);
+      // Attempt to add via GitHubService
+      const result = await GitHubService.addProjectFromGitHub(url);
       
-      if (result.success && result.agent) {
-        // Then save to our database
-        const supabaseService = SupabaseService.getInstance();
-        const added = await supabaseService.addProject(result.agent);
+      if (result.success) {
+        console.log(`DirectoryGrid: Repository added successfully from URL: ${url}`);
         
-        if (!added) {
-          toast({
-            title: 'Duplicate Repository',
-            description: 'This repository already exists in the directory.',
-            variant: 'destructive',
-          });
-          setIsSubmitting(false);
-          return;
-        }
+        // Trigger a full refresh from Supabase instead of updating local state directly
+        fetchAgents();
         
-        // Update state
-        setAgents(prevAgents => [result.agent, ...prevAgents]);
-        setFilteredAgents(prevAgents => [result.agent, ...prevAgents]);
-        
-        setShowAddForm(false);
         toast({
-          title: 'Project Added',
-          description: `Successfully added ${result.agent.name} to the directory.`,
+          title: "Repository Added",
+          description: "The repository has been added to the directory.",
         });
       } else {
+        console.error(`DirectoryGrid: Failed to add repository: ${result.error}`);
         toast({
-          title: 'Error',
-          description: result.error || 'Failed to add repository.',
-          variant: 'destructive',
+          title: "Error Adding Repository",
+          description: result.error || "Failed to add repository. It may already exist or is invalid.",
+          variant: "destructive",
         });
       }
     } catch (error) {
-      console.error('Error adding repository:', error);
+      console.error('DirectoryGrid: Error adding repository:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to add repository. Please try again.',
-        variant: 'destructive',
+        title: "Error Adding Repository",
+        description: "An unexpected error occurred while adding the repository.",
+        variant: "destructive",
       });
     } finally {
       setIsSubmitting(false);
+      setShowAddForm(false);
     }
   };
   
@@ -502,6 +483,44 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
     setCurrentPage(1); // Reset to first page when changing page size
   };
   
+  // Function to just get the count without fetching all projects
+  const getProjectCount = async () => {
+    try {
+      const { count, error } = await supabase
+        .from(PROJECTS_TABLE)
+        .select('*', { count: 'exact', head: true });
+      
+      if (error) {
+        console.error('Error getting project count:', error);
+        return;
+      }
+      
+      if (count !== null) {
+        console.log(`Total projects in database: ${count}`);
+        // Update a separate state for total count
+        setTotalProjectCount(count);
+      }
+    } catch (error) {
+      console.error('Error getting project count:', error);
+    }
+  };
+  
+  // Initial fetch of agents
+  useEffect(() => {
+    fetchAgents();
+    
+    // Set up interval to refresh the count every minute
+    const refreshInterval = setInterval(() => {
+      console.log('Refreshing agent count from Supabase');
+      // Just fetch the count to update the total number
+      getProjectCount();
+    }, 60000); // Every minute
+    
+    return () => {
+      clearInterval(refreshInterval);
+    };
+  }, []);
+  
   return (
     <div id="directory" className="w-full relative">
       <div className="bg-gradient-to-r from-[#0c0e20] to-[#161a36] backdrop-blur-md border-b border-white/10 p-4 flex flex-col md:flex-row md:items-center gap-y-4 justify-between">
@@ -516,7 +535,7 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
           <div>
             <h2 className="font-semibold text-white text-lg">AI Agent Directory</h2>
             <div className="text-xs text-white/60 font-medium">
-              Showing <span className="text-indigo-400 font-semibold">{paginatedAgents.length}</span> of <span className="text-indigo-400 font-semibold">{agents.length}</span> total projects
+              Showing <span className="text-indigo-400 font-semibold">{paginatedAgents.length}</span> of <span className="text-indigo-400 font-semibold">{totalProjectCount || filteredAgents.length}</span> total projects
             </div>
           </div>
         </div>
@@ -735,10 +754,13 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
         onClose={() => setShowBulkImport(false)}
         onProjectsAdded={(projects) => {
           if (projects && projects.length > 0) {
-            // Add projects to state
-            setAgents(prevAgents => [...projects, ...prevAgents]);
-            setFilteredAgents(prevAgents => [...projects, ...prevAgents]);
-            // Show success message
+            console.log(`Projects added via bulk import: ${projects.length}. Refreshing from Supabase...`);
+            
+            // Give Supabase a moment to update
+            setTimeout(() => {
+              fetchAgents();
+            }, 500);
+            
             toast({
               title: 'Projects Added',
               description: `Successfully added ${projects.length} projects to the directory.`,
@@ -841,6 +863,9 @@ const DirectoryGrid: React.FC<DirectoryGridProps> = ({ initialSearchQuery = '' }
               </select>
             </div>
           </div>
+          <p className="text-sm text-white/60 mt-2">
+            Showing {paginatedAgents.length} of {filteredAgents.length} projects ({totalProjectCount} total in database)
+          </p>
         </div>
       )}
     </div>

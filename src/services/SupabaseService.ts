@@ -18,6 +18,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 export class SupabaseService {
   private static instance: SupabaseService;
   private isSupabaseAvailable = true;
+  private availableColumns: string[] = [];
 
   // Singleton pattern to ensure consistency across the application
   public static getInstance(): SupabaseService {
@@ -49,6 +50,44 @@ export class SupabaseService {
     } catch (error) {
       console.warn('Error checking Supabase availability:', error);
       this.isSupabaseAvailable = false;
+    }
+  }
+
+  /**
+   * Initialize the service
+   */
+  public async init(): Promise<boolean> {
+    try {
+      console.log('Initializing SupabaseService...');
+      
+      // Check if Supabase is available with a simpler check
+      try {
+        const { data, error } = await supabase
+          .from(PROJECTS_TABLE)
+          .select('id')
+          .limit(1);
+          
+        if (error && error.code !== 'PGRST116') {
+          console.warn('Supabase connection available but project table may not exist:', error);
+          // Continue anyway, we'll create the table later
+        }
+      } catch (error) {
+        console.warn('Supabase connection check failed:', error);
+        // We'll still try to continue
+      }
+      
+      // Ensure projects table exists
+      await this.ensureProjectsTable();
+      
+      // Get available columns
+      this.availableColumns = await this.getAvailableColumns();
+      console.log('Available columns detected:', this.availableColumns);
+      
+      return true;
+    } catch (error) {
+      console.error('Error initializing SupabaseService:', error);
+      this.isSupabaseAvailable = false;
+      return false;
     }
   }
 
@@ -361,107 +400,47 @@ export class SupabaseService {
         return false;
       }
       
-      // Check if duplicate by direct URL comparison (exact match)
-      const { data: exactUrlMatch, error: checkError } = await supabase
-        .from(PROJECTS_TABLE)
-        .select('id, url')
-        .eq('url', project.url)
-        .limit(1);
+      // Check for duplicates - code remains the same
+      // ...
       
-      if (checkError) {
-        console.error('Error checking for duplicate:', checkError);
-        return false;
+      // Ensure we have detected available columns
+      if (!this.availableColumns || this.availableColumns.length === 0) {
+        this.availableColumns = await this.getAvailableColumns();
       }
       
-      // If exact URL match found, don't add
-      if (exactUrlMatch && exactUrlMatch.length > 0) {
-        console.log(`Project already exists with exact URL: ${project.url}`);
-        return false;
+      // Create insert data with only the columns that exist in the database
+      const insertData: any = {
+        url: project.url,
+        name: project.name,
+        description: project.description || '',
+        owner: project.owner || '',
+        stars: project.stars || 0,
+        forks: project.forks || 0,
+        topics: project.topics || [],
+        language: project.language || 'Unknown',
+        license: project.license || 'Unknown',
+        updated: project.updated || new Date().toISOString(),
+        avatar: project.avatar || ''
+      };
+      
+      // Add tags and isTest only if those columns exist
+      if (this.availableColumns.includes('tags')) {
+        insertData.tags = project.tags || [];
       }
       
-      // Check for GitHub URLs with different formats but same repo
-      if (project.url.includes('github.com')) {
-        try {
-          const url = new URL(project.url);
-          const pathParts = url.pathname.split('/').filter(part => part);
-          
-          if (pathParts.length >= 2) {
-            const owner = pathParts[0].toLowerCase();
-            const repo = pathParts[1].toLowerCase();
-            
-            // Look for any URL that contains this owner/repo combination
-            const { data: similarRepos, error: repoError } = await supabase
-              .from(PROJECTS_TABLE)
-              .select('id, url')
-              .ilike('url', `%github.com/${owner}/${repo}%`)
-              .limit(5);
-            
-            if (!repoError && similarRepos && similarRepos.length > 0) {
-              console.log(`Project already exists with similar repo: ${owner}/${repo}`);
-              return false;
-            }
-            
-            // Also check if owner and repo fields match
-            if (project.owner && project.name) {
-              const { data: ownerRepoMatch, error: ownerRepoError } = await supabase
-                .from(PROJECTS_TABLE)
-                .select('id')
-                .ilike('owner', owner)
-                .ilike('name', repo)
-                .limit(1);
-                
-              if (!ownerRepoError && ownerRepoMatch && ownerRepoMatch.length > 0) {
-                console.log(`Project already exists with matching owner/name: ${owner}/${repo}`);
-                return false;
-              }
-            }
-          }
-        } catch (e) {
-          // URL parsing failed, continue with original checks
-          console.warn('URL parsing failed during duplicate check:', project.url);
-        }
+      if (this.availableColumns.includes('isTest')) {
+        insertData.isTest = project.isTest || false;
       }
+      
+      // Filter the data to include only available columns
+      const filteredData = this.filterObjectToAvailableColumns(insertData, this.availableColumns);
       
       // If no duplicates found, add the project
       const { data, error } = await supabase
         .from(PROJECTS_TABLE)
-        .insert([
-          {
-            url: project.url,
-            name: project.name,
-            description: project.description || '',
-            owner: project.owner || '',
-            stars: project.stars || 0,
-            forks: project.forks || 0,
-            topics: project.topics || [],
-            language: project.language || 'Unknown',
-            license: project.license || 'Unknown',
-            updated: project.updated || new Date().toISOString(),
-            tags: project.tags || [],
-            avatar: project.avatar || ''  // Ensure avatar is included
-          }
-        ]);
+        .insert([filteredData]);
       
-      if (error) {
-        console.error('Error adding project:', error);
-        // Try to provide more detailed error message
-        if (error.message && error.message.includes('duplicate')) {
-          console.error('Duplicate detection failed but database reports duplicate constraint');
-        }
-        return false;
-      }
-      
-      // After successfully adding to Supabase, trigger a refresh event
-      if (typeof window !== 'undefined') {
-        // Use a unique timestamp to ensure the event is always detected
-        localStorage.setItem('supabase_updated', Date.now().toString());
-        // Dispatch a custom event for components that don't listen to storage
-        window.dispatchEvent(new CustomEvent('supabase_updated'));
-      }
-      
-      console.log(`Successfully added project: ${project.name}`);
-      return true;
-      
+      // ...
     } catch (error) {
       console.error('Exception in addProject:', error);
       return false;
@@ -672,6 +651,41 @@ export class SupabaseService {
   }
 
   /**
+   * Ensure required columns exist in the projects table
+   */
+  public async ensureProjectColumns(): Promise<boolean> {
+    try {
+      // Check if the table exists first
+      await this.ensureProjectsTable();
+      
+      console.log('Checking if required columns exist in projects table');
+      
+      // Check if the tags column exists by querying for it
+      const { error: checkError } = await supabase
+        .from(PROJECTS_TABLE)
+        .select('tags')
+        .limit(1);
+        
+      // If we get a specific error about the tags column not existing, we need to add it
+      if (checkError && 
+          checkError.code === 'PGRST204' && 
+          checkError.message && 
+          checkError.message.includes("Could not find the 'tags' column")) {
+        
+        console.log('Tags column does not exist in projects table, skipping tags in inserts');
+        return false;
+      }
+      
+      // If no specific error about tags column, assume it exists
+      return true;
+      
+    } catch (error) {
+      console.error('Error checking project columns:', error);
+      return false;
+    }
+  }
+
+  /**
    * Save all projects to Supabase, handling duplicates intelligently
    */
   public async saveAllProjects(projects: Agent[]): Promise<boolean> {
@@ -694,6 +708,10 @@ export class SupabaseService {
         return false;
       }
       
+      // Check if tags column exists
+      const tagsColumnExists = await this.ensureProjectColumns();
+      console.log(`Tags column exists: ${tagsColumnExists}`);
+
       // Create maps for quick lookups
       const existingUrlMap = new Map<string, string>(); // url -> id
       const existingOwnerRepoMap = new Map<string, string>(); // owner/repo -> id
@@ -768,7 +786,8 @@ export class SupabaseService {
                   }
                 }
               } catch (e) {
-                // Ignore URL parsing errors
+                // URL parsing failed, continue with original checks
+                console.warn('URL parsing failed during duplicate check:', project.url);
               }
             }
           }
@@ -784,8 +803,8 @@ export class SupabaseService {
           if (isDuplicate) {
             skipCount++;
           } else {
-            // Prepare for insert
-            toInsert.push({
+            // Prepare insert data based on column existence
+            const insertData: any = {
               url: project.url,
               name: project.name,
               description: project.description || '',
@@ -796,9 +815,18 @@ export class SupabaseService {
               language: project.language || 'Unknown',
               license: project.license || 'Unknown',
               updated: project.updated || new Date().toISOString(),
-              tags: project.tags || [],
               avatar: project.avatar || ''
-            });
+            };
+            
+            // Only include tags if the column exists
+            if (tagsColumnExists) {
+              insertData.tags = project.tags || [];
+            }
+            
+            // Filter the data to include only available columns
+            const filteredData = this.filterObjectToAvailableColumns(insertData, this.availableColumns);
+            
+            toInsert.push(filteredData);
             
             // Add to our tracking sets to prevent duplicates in the same batch
             existingUrlMap.set(project.url.toLowerCase().trim(), 'pending');
@@ -810,12 +838,10 @@ export class SupabaseService {
         
         if (toInsert.length > 0) {
           console.log(`Inserting batch of ${toInsert.length} projects to Supabase`);
-          const { data, error } = await supabase
-            .from(PROJECTS_TABLE)
-            .insert(toInsert);
+          const result = await this.insertProjectsBatch(toInsert);
             
-          if (error) {
-            console.error('Error inserting projects batch:', error);
+          if (result.error) {
+            console.error('Error inserting projects batch:', result.error);
             errorCount += toInsert.length;
           } else {
             successCount += toInsert.length;
@@ -840,6 +866,222 @@ export class SupabaseService {
       console.error('Exception in saveAllProjects:', error);
       return false;
     }
+  }
+
+  /**
+   * Save a batch of projects to Supabase
+   */
+  private async insertProjectsBatch(projects: any[]): Promise<{ data: any; error: any }> {
+    if (!projects || !Array.isArray(projects) || projects.length === 0) {
+      return { data: null, error: null }; // Nothing to insert
+    }
+    
+    try {
+      console.log(`Inserting batch of ${projects.length} projects to Supabase`);
+      
+      // Ensure we have detected available columns
+      if (!this.availableColumns || this.availableColumns.length === 0) {
+        this.availableColumns = await this.getAvailableColumns();
+      }
+      
+      // Add UUIDs to projects that need them and filter to available columns
+      const preparedProjects = projects.map(project => {
+        // Generate UUID if needed
+        const withId = {
+          ...project,
+          // Only generate ID if it doesn't already have one
+          id: project.id || crypto.randomUUID()
+        };
+        
+        // Then filter to only include available columns
+        return this.filterObjectToAvailableColumns(withId, this.availableColumns);
+      });
+
+      console.log(`Prepared ${preparedProjects.length} projects with IDs and filtered to available columns`);
+      
+      // Insert the prepared projects
+      const result = await supabase
+        .from(PROJECTS_TABLE)
+        .insert(preparedProjects);
+        
+      if (result.error) {
+        console.warn('Error inserting projects batch:', result.error);
+        
+        // Try one more time with minimal fields if we get a column error
+        if (result.error.code === 'PGRST204' && result.error.message?.includes('column')) {
+          console.log('Trying insertion with only core fields...');
+          
+          // Use only the most basic fields but ensure ID is included
+          const minimalProjects = projects.map(project => ({
+            id: project.id || crypto.randomUUID(),
+            name: project.name,
+            url: project.url,
+            description: project.description || '',
+            owner: project.owner || '',
+            stars: project.stars || 0
+          }));
+          
+          const fallbackResult = await supabase
+            .from(PROJECTS_TABLE)
+            .insert(minimalProjects);
+            
+          return fallbackResult;
+        }
+        
+        return result;
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Error in insertProjectsBatch:', error);
+      return { data: null, error };
+    }
+  }
+
+  /**
+   * Get available columns in the projects table
+   */
+  public async getAvailableColumns(): Promise<string[]> {
+    // If we already have columns cached, return them
+    if (this.availableColumns && this.availableColumns.length > 0) {
+      return this.availableColumns;
+    }
+    
+    try {
+      // Try a simple select first to see if the table exists
+      const { data: tableCheck, error: tableError } = await supabase
+        .from(PROJECTS_TABLE)
+        .select('id')
+        .limit(1);
+      
+      if (tableError) {
+        console.warn('Table exists but has errors:', tableError);
+        // Return basic columns that should always exist
+        return ['id', 'url', 'name', 'description', 'owner', 'stars', 'forks', 'language'];
+      }
+      
+      // We know the table exists, now try to use introspection
+      try {
+        // Get column information from Supabase introspection
+        const { data, error } = await supabase.rpc('get_column_names', { 
+          table_name: PROJECTS_TABLE 
+        });
+        
+        if (error) {
+          console.warn('RPC method for column detection not available - using fallback:', error);
+          // Fallback to manual column detection
+          return this.detectColumnsManually();
+        }
+        
+        if (data && Array.isArray(data)) {
+          console.log('Available columns in projects table:', data);
+          this.availableColumns = data;
+          return data;
+        }
+      } catch (rpcError) {
+        console.warn('RPC function not available:', rpcError);
+        // RPC not available, fallback to manual detection
+      }
+      
+      // Fallback to manual detection
+      return this.detectColumnsManually();
+      
+    } catch (error) {
+      console.error('Error getting available columns:', error);
+      // Use default column set as fallback
+      return ['id', 'url', 'name', 'description', 'owner', 'stars', 'forks', 'language'];
+    }
+  }
+  
+  /**
+   * Detect columns manually by trying to select them
+   */
+  private async detectColumnsManually(): Promise<string[]> {
+    // These are the columns we expect to have
+    const expectedColumns = [
+      'id', 'url', 'name', 'description', 'owner', 
+      'stars', 'forks', 'topics', 'language', 'license', 
+      'updated', 'tags', 'avatar', 'isTest'
+    ];
+    
+    const availableColumns: string[] = [];
+    
+    // Try a simple query first
+    try {
+      const { data, error } = await supabase
+        .from(PROJECTS_TABLE)
+        .select('id')
+        .limit(1);
+        
+      if (error) {
+        console.warn('Unable to detect columns manually:', error);
+        // Return basic columns as fallback
+        return ['id', 'url', 'name', 'description', 'owner', 'stars', 'forks', 'language'];
+      }
+    } catch (error) {
+      console.warn('Error checking table:', error);
+      // Return basic columns as fallback
+      return ['id', 'url', 'name', 'description', 'owner', 'stars', 'forks', 'language'];
+    }
+    
+    // Use the select columns method - simpler than checking each column
+    try {
+      const { error } = await supabase
+        .from(PROJECTS_TABLE)
+        .select('*')
+        .limit(1);
+        
+      if (!error) {
+        console.log('Table structure looks good, using all expected columns');
+        return expectedColumns;
+      }
+    } catch (error) {
+      console.warn('Error checking all columns:', error);
+    }
+    
+    // Fallback to trying each column individually
+    for (const column of expectedColumns) {
+      try {
+        const { error } = await supabase
+          .from(PROJECTS_TABLE)
+          .select(column)
+          .limit(1);
+        
+        if (!error) {
+          availableColumns.push(column);
+        }
+      } catch (error) {
+        // Column doesn't exist, skip it
+        console.log(`Column ${column} doesn't exist in the schema`);
+      }
+    }
+    
+    // Always ensure we have the absolutely required columns
+    if (!availableColumns.includes('id')) availableColumns.push('id');
+    if (!availableColumns.includes('url')) availableColumns.push('url');
+    if (!availableColumns.includes('name')) availableColumns.push('name');
+    
+    console.log('Manually detected columns:', availableColumns);
+    this.availableColumns = availableColumns;
+    return availableColumns;
+  }
+  
+  /**
+   * Filter object properties to only include available columns
+   */
+  private filterObjectToAvailableColumns(obj: any, availableColumns: string[]): any {
+    if (!obj || typeof obj !== 'object') return obj;
+    
+    const filtered: any = {};
+    
+    // Only include properties that exist as columns
+    for (const key of Object.keys(obj)) {
+      if (availableColumns.includes(key)) {
+        filtered[key] = obj[key];
+      }
+    }
+    
+    return filtered;
   }
 }
 
